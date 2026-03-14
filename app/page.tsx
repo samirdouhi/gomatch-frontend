@@ -8,6 +8,7 @@ import { Footer } from "./components/Footer";
 import { FloatingAssistantButton } from "./components/FloatingAssistantButton";
 import { ThemeSurface } from "./components/ThemeSurface";
 
+
 export default function Page() {
   return (
     <ThemeSurface>

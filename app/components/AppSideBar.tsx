@@ -2,29 +2,31 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
-import { useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+
 import {
-  Home,
-  Calendar,
-  Store,
-  Landmark,
-  Brain,
-  Map as MapIcon,
-  LogIn,
-  X,
+  Home, Calendar, Store, Landmark, Brain, Map as CarteIcon,
+  LogIn, LogOut, X, Search, Settings, Heart, History,
+  Sparkles, HelpCircle, Info, Mail, BadgeCheck,  User, 
 } from "lucide-react";
+import { logout } from "@/lib/logout";
 
-const ALL_ITEMS = [
-  { name: "Home", icon: Home, href: "/" },
-  { name: "Matches", icon: Calendar, href: "/events" },
-  { name: "Que Faire ?", icon: Store, href: "/businesses" },
-  { name: "Culture", icon: Landmark, href: "/culture" },
-  { name: "Assistant", icon: Brain, href: "/assistant" },
-  { name: "Map", icon: MapIcon, href: "/map" },
-];
+type ElementMenu = {
+  nom: string;
+  icone: React.ElementType;
+  lien: string;
+  description?: string;
+  badge?: string;
+  external?: boolean;
+};
 
-function isActive(pathname: string, href: string) {
+type SectionMenu = {
+  titre: string;
+  elements: ElementMenu[];
+};
+
+function estActif(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
   return pathname === href || pathname.startsWith(href + "/");
 }
@@ -34,157 +36,182 @@ type Props = {
   onClose: () => void;
 };
 
+function readAuthedFromStorage() {
+  if (typeof window === "undefined") return false;
+  return !!localStorage.getItem("gomatch_access_token");
+}
+
+const SECTIONS_AUTH: SectionMenu[] = [
+  {
+    titre: "Navigation",
+    elements: [
+      { nom: "Accueil", icone: Home, lien: "/", description: "Page principale" },
+      { nom: "Matchs", icone: Calendar, lien: "/events", description: "Calendrier" },
+      { nom: "Culture", icone: Landmark, lien: "/culture", description: "Patrimoine & histoires" },
+      { nom: "Carte", icone: CarteIcon, lien: "/map", description: "Explorer autour de toi" },
+      { nom: "Que faire ?", icone: Store, lien: "/businesses", description: "Commerces & sorties" },
+    ],
+  },
+  {
+    titre: "Intelligent",
+    elements: [
+      { nom: "Assistant", icone: Brain, lien: "/assistant", description: "Aide & conseils", badge: "IA" },
+      { nom: "Recommandations", icone: Sparkles, lien: "/reco", description: "Suggestions" },
+    ],
+  },
+  {
+    titre: "Mon espace",
+    elements: [
+      { nom: "Profil", icone: User, lien: "/profile", description: "Compte & infos" },
+      { nom: "Favoris", icone: Heart, lien: "/favorites", description: "Lieux enregistrés" },
+      { nom: "Historique", icone: History, lien: "/history", description: "Dernières visites" },
+      { nom: "Paramètres", icone: Settings, lien: "/settings", description: "Préférences" },
+    ],
+  },
+];
+
+const INVITE_ACTIONS = [
+  { label: "Créer un compte", href: "/Register", variant: "primary" as const, icon: BadgeCheck },
+  { label: "Se connecter", href: "/signin", variant: "secondary" as const, icon: LogIn },
+];
+
+const INVITE_LINKS: ElementMenu[] = [
+  { nom: "Expérience 2030", icone: Sparkles, lien: "/experience", description: "Villes & ambiances" },
+  { nom: "Ajouter votre commerce", icone: Store, lien: "/ajouter-commerce", description: "Rejoindre GoMatch" },
+  { nom: "Aide", icone: HelpCircle, lien: "/aide", description: "FAQ & support" },
+  { nom: "À propos", icone: Info, lien: "/a-propos", description: "Notre mission" },
+  { nom: "Contact", icone: Mail, lien: "/contact", description: "Nous écrire" },
+];
+
 export function AppSidebar({ open, onClose }: Props) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [recherche, setRecherche] = useState("");
+  const [authed, setAuthed] = useState(() => readAuthedFromStorage());
 
-  // ESC pour fermer (uniquement quand open)
   useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
     if (open) document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
+  useEffect(() => {
+    const sync = () => setAuthed(readAuthedFromStorage());
+    window.addEventListener("storage", sync);
+    window.addEventListener("gomatch-auth-changed", sync as EventListener);
+    return () => {
+      window.removeEventListener("storage", sync);
+      window.removeEventListener("gomatch-auth-changed", sync as EventListener);
+    };
+  }, []);
+
+  async function handleLogout() {
+    try { await logout(); } catch { } finally {
+      window.dispatchEvent(new Event("gomatch-auth-changed"));
+      onClose();
+      router.replace("/signin");
+      router.refresh();
+    }
+  }
+
+  const inviteFiltered = useMemo(() => {
+    const q = recherche.trim().toLowerCase();
+    if (!q) return INVITE_LINKS;
+    return INVITE_LINKS.filter(it => `${it.nom} ${it.description}`.toLowerCase().includes(q));
+  }, [recherche]);
+
+  const authSectionsFiltrees = useMemo(() => {
+    const q = recherche.trim().toLowerCase();
+    if (!q) return SECTIONS_AUTH;
+    return SECTIONS_AUTH.map(s => ({
+      ...s,
+      elements: s.elements.filter(it => `${it.nom} ${it.description}`.toLowerCase().includes(q))
+    })).filter(s => s.elements.length > 0);
+  }, [recherche]);
+
   return (
-    // ✅ Toujours monté pour l'animation, MAIS quand fermé => pointer-events-none
-    <div
-      className={[
-        "fixed inset-0 z-[140] transition-opacity duration-300",
-        open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none",
-      ].join(" ")}
-      aria-hidden={!open}
-    >
-      {/* Overlay (clique pour fermer) */}
-      <button
-        type="button"
-        aria-label="Close sidebar overlay"
-        onClick={onClose}
-        className="absolute inset-0 bg-black/35 backdrop-blur-sm"
-      />
+    <div className={`fixed inset-0 z-[140] transition-all duration-500 ${open ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
+      {/* Overlay */}
+      <div onClick={onClose} className="absolute inset-0 bg-black/60 backdrop-blur-md" />
 
-      {/* Panel sidebar (animation slide) */}
-      <aside
-        className={[
-          "absolute left-0 top-0 h-screen w-[340px] max-w-[88vw] border-r border-black/10",
-          "transform-gpu transition-transform duration-300 ease-out",
-          open ? "translate-x-0" : "-translate-x-full",
-        ].join(" ")}
-      >
-        <div className="relative flex h-full w-full flex-col overflow-hidden bg-gradient-to-b from-[#8B0B13] via-[#B0101C] to-[#5A060C]">
-          {/* Glows */}
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-0 opacity-100 [background:
-              radial-gradient(900px_520px_at_10%_0%,rgba(255,255,255,0.22),transparent_60%),
-              radial-gradient(900px_520px_at_95%_20%,rgba(245,158,11,0.30),transparent_55%),
-              radial-gradient(900px_520px_at_40%_90%,rgba(0,0,0,0.30),transparent_55%)
-            ]"
-          />
+      {/* Panel */}
+      <aside className={`absolute left-0 top-0 h-screen w-[320px] bg-[#0a0a0a] border-r border-white/10 transition-transform duration-500 ease-out shadow-2xl ${open ? "translate-x-0" : "-translate-x-full"}`}>
+        
+        {/* Glow discret en fond */}
+        <div className="absolute top-0 left-0 w-full h-64 bg-[#facc15]/5 blur-[120px] pointer-events-none" />
 
+        <div className="relative flex h-full flex-col overflow-hidden">
+          
           {/* Header */}
-          <div className="relative px-4 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="absolute right-4 top-4 h-10 w-10 rounded-2xl border border-white/14 bg-white/10 hover:bg-white/14 transition flex items-center justify-center"
-              aria-label="Close sidebar"
-              title="Close"
-            >
-              <X className="h-5 w-5 text-white/90" />
-            </button>
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-8">
+              <Link href="/" onClick={onClose} className="relative h-10 w-32">
+                <Image src="/logoGoMatch2030.png" alt="Logo" fill className="object-contain object-left" priority />
+              </Link>
+              <button onClick={onClose} className="p-2 rounded-xl bg-white/5 border border-white/10 text-white/40 hover:text-white hover:border-[#facc15] transition-all">
+                <X size={20} />
+              </button>
+            </div>
 
-            <Link href="/" onClick={onClose} aria-label="Go to Home" className="block">
-              <div className="flex items-center justify-center pt-6 pb-4">
-                <Image
-                  src="/logoGoMatch2030.png"
-                  alt="GoMatch Morocco 2030"
-                  width={320}
-                  height={320}
-                  priority
-                  className="h-auto w-[240px] sm:w-[260px] md:w-[280px] object-contain drop-shadow-[0_22px_44px_rgba(0,0,0,0.38)]"
-                />
+            {/* Recherche style TopBar */}
+            <div className="relative group">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/20 group-focus-within:text-[#facc15] transition-colors" />
+              <input
+                value={recherche}
+                onChange={(e) => setRecherche(e.target.value)}
+                placeholder="Rechercher..."
+                className="w-full rounded-xl border border-white/10 bg-white/5 pl-10 pr-4 py-2.5 text-xs text-white placeholder:text-white/20 outline-none focus:border-[#facc15]/50 transition-all"
+              />
+            </div>
+
+            {!authed && (
+              <div className="mt-6 flex flex-col gap-2">
+                {INVITE_ACTIONS.map((a) => (
+                  <Link key={a.href} href={a.href} onClick={onClose} 
+                    className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                      a.variant === "primary" ? "bg-[#facc15] text-black shadow-lg shadow-[#facc15]/10 hover:scale-[1.02]" : "bg-white/5 border border-white/10 text-white hover:bg-white/10"
+                    }`}>
+                    <a.icon size={14} /> {a.label}
+                  </Link>
+                ))}
               </div>
-            </Link>
+            )}
           </div>
 
-          {/* Menu list */}
-          <nav
-            className={[
-              "relative flex-1 min-h-0 px-4 pb-4 space-y-2 overflow-y-auto",
-              "[scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden",
-            ].join(" ")}
-          >
-            {ALL_ITEMS.map((item) => {
-              const Icon = item.icon;
-              const active = isActive(pathname, item.href);
-
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={onClose}
-                  aria-current={active ? "page" : undefined}
-                  className={[
-                    "w-full box-border block rounded-2xl border transition-all duration-300 will-change-transform",
-                    "hover:-translate-y-[2px] hover:shadow-[0_10px_28px_rgba(0,0,0,0.25)]",
-                    active
-                      ? "border-white/28 bg-gradient-to-r from-white/18 to-amber-200/18"
-                      : "border-white/14 bg-white/10 hover:border-white/22 hover:bg-white/14",
-                  ].join(" ")}
-                >
-                  <div className="grid grid-cols-[44px_1fr_18px] items-center gap-3 px-3 py-3">
-                    <div
-                      className={[
-                        "h-11 w-11 rounded-2xl border flex items-center justify-center transition-all duration-300",
-                        active ? "bg-white/18 border-white/22" : "bg-black/10 border-white/14",
-                      ].join(" ")}
-                    >
-                      <Icon className={active ? "h-5 w-5 text-white" : "h-5 w-5 text-white/85"} />
-                    </div>
-
-                    <div className="min-w-0">
-                      <div className="text-sm font-black text-white leading-tight">{item.name}</div>
-                      <div className="text-xs text-white/70 truncate">Accès rapide</div>
-                    </div>
-
-                    <div className="flex justify-end">
-                      <span
-                        className={[
-                          "h-2.5 w-2.5 rounded-full transition-all duration-300",
-                          active
-                            ? "bg-amber-300 shadow-[0_0_0_6px_rgba(245,158,11,0.22)]"
-                            : "bg-transparent",
-                        ].join(" ")}
-                      />
-                    </div>
+          {/* Navigation Content */}
+          <div className="flex-1 overflow-y-auto px-4 pb-6 space-y-6 [scrollbar-width:none]">
+            {!authed ? (
+              <div className="space-y-1">
+                {inviteFiltered.map((item) => (
+                  <SidebarLink key={item.lien} item={item} actif={estActif(pathname, item.lien)} onClick={onClose} />
+                ))}
+              </div>
+            ) : (
+              authSectionsFiltrees.map((section) => (
+                <div key={section.titre} className="space-y-2">
+                  <h3 className="px-4 text-[10px] font-black uppercase tracking-[0.2em] text-white/20">
+                    {section.titre}
+                  </h3>
+                  <div className="space-y-1">
+                    {section.elements.map((item) => (
+                      <SidebarLink key={item.lien} item={item} actif={estActif(pathname, item.lien)} onClick={onClose} />
+                    ))}
                   </div>
-                </Link>
-              );
-            })}
-          </nav>
+                </div>
+              ))
+            )}
+          </div>
 
           {/* Footer */}
-          <div className="relative px-4 py-4 border-t border-white/12">
-            <Link
-              href="/signin"
-              onClick={onClose}
-              className="w-full box-border block rounded-2xl border border-white/14 bg-white/10
-                         hover:bg-white/14 hover:border-white/22 hover:-translate-y-[1px]
-                         hover:shadow-[0_10px_24px_rgba(0,0,0,0.22)]
-                         transition-all duration-300"
-            >
-              <div className="grid grid-cols-[44px_1fr] items-center gap-3 px-3 py-3">
-                <div className="h-11 w-11 rounded-2xl bg-black/10 border border-white/14 flex items-center justify-center">
-                  <LogIn className="h-5 w-5 text-white/85" />
-                </div>
-
-                <div className="min-w-0">
-                  <div className="text-sm font-black text-white leading-tight">Sign in</div>
-                  <div className="text-xs text-white/70 truncate">Compte & favoris</div>
-                </div>
-              </div>
-            </Link>
+          <div className="p-4 border-t border-white/5 bg-black/40">
+            {authed && (
+              <button onClick={handleLogout} className="flex w-full items-center gap-3 px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest text-[#ef4444] hover:bg-[#ef4444]/5 transition-all">
+                <LogOut size={16} /> Quitter la session
+              </button>
+            )}
+            <p className="mt-2 text-[9px] text-center font-bold uppercase tracking-widest text-white/10">
+              © GoMatch Maroc 2030
+            </p>
           </div>
         </div>
       </aside>
@@ -192,6 +219,36 @@ export function AppSidebar({ open, onClose }: Props) {
   );
 }
 
+function SidebarLink({ item, actif, onClick }: { item: ElementMenu; actif: boolean; onClick: () => void }) {
+  const Icon = item.icone;
+  return (
+    <Link
+      href={item.lien}
+      onClick={onClick}
+      className={`group flex items-center gap-4 px-4 py-3 rounded-xl transition-all ${
+        actif ? "bg-[#facc15]/10 border border-[#facc15]/20 shadow-[0_0_20px_rgba(250,204,21,0.05)]" : "hover:bg-white/5 border border-transparent"
+      }`}
+    >
+      <div className={`p-2 rounded-lg transition-colors ${actif ? "bg-[#facc15] text-black" : "bg-white/5 text-white/40 group-hover:text-white"}`}>
+        <Icon size={18} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className={`text-[11px] font-black uppercase tracking-wider transition-colors ${actif ? "text-[#facc15]" : "text-white/60 group-hover:text-white"}`}>
+            {item.nom}
+          </span>
+          {item.badge && (
+            <span className="px-1.5 py-0.5 rounded-md bg-[#facc15] text-[8px] font-black text-black">
+              {item.badge}
+            </span>
+          )}
+        </div>
+        <p className="text-[10px] text-white/20 truncate">{item.description}</p>
+      </div>
+      {actif && <div className="h-1.5 w-1.5 rounded-full bg-[#facc15] shadow-[0_0_10px_#facc15]" />}
+    </Link>
+  );
+}
 
 
 

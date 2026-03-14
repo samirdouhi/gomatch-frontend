@@ -1,182 +1,761 @@
 "use client";
 
 import Link from "next/link";
-import { EyeOff } from "lucide-react";
+import { ArrowLeft, Zap, ArrowRight } from "lucide-react";
+import { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
+import { setMockProfile } from "@/lib/profileMock";
 
-export default function RegisterPage() {
+/* -------------------- BACKGROUND TYPES -------------------- */
+interface Orbe {
+  id: number;
+  size: number;
+  left: number;
+  top: number;
+  duration: number;
+}
+
+interface Comete {
+  id: number;
+  top: number;
+  duration: number;
+  delay: number;
+}
+
+const pseudoRandom = (seed: number) => {
+  const x = Math.sin(seed) * 10000;
+  return x - Math.floor(x);
+};
+
+/* -------------------- BACKGROUND -------------------- */
+const DynamicSpaceBackground = () => {
+  const elements = useMemo(() => {
+    const newOrbes: Orbe[] = [...Array(5)].map((_, i) => ({
+      id: i,
+      size: 300 + i * 50,
+      left: Math.floor(pseudoRandom(i + 1) * 100),
+      top: Math.floor(pseudoRandom(i + 2) * 100),
+      duration: 10 + i * 2,
+    }));
+
+    const newCometes: Comete[] = [...Array(12)].map((_, i) => ({
+      id: i,
+      top: Math.floor(pseudoRandom(i + 10) * 100),
+      duration: 3 + pseudoRandom(i + 20) * 4,
+      delay: pseudoRandom(i + 30) * 5,
+    }));
+
+    return { orbes: newOrbes, cometes: newCometes };
+  }, []);
+
   return (
-    // Le parent <main> du layout fait déjà flex-1 → on utilise h-full
-    <main className="h-full overflow-hidden">
-      {/* ✅ Page en 2 colonnes, sans scroll global */}
-      <div className="h-full grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] overflow-hidden">
-        {/* ================= LEFT : IMAGE STABLE ================= */}
-        <section className="relative hidden lg:block overflow-hidden">
-          {/* ✅ image "fixe" dans la colonne (sticky) */}
-          <div
-            className="
-              sticky top-0 h-full
-              bg-black
-              bg-[url('/photoRegister.png')]
-              bg-cover bg-center
-            "
-          >
-            {/* overlay sombre */}
-            <div className="absolute inset-0 bg-black/55" />
+    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      <motion.div
+        animate={{ y: [0, -40] }}
+        transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+        // CHANGEMENT : Couleur de la grille (Ambre très léger)
+        className="absolute inset-0 bg-[linear-gradient(to_right,#ffd70005_1px,transparent_1px),linear-gradient(to_bottom,#ffd70005_1px,transparent_1px)] bg-[size:40px_40px] opacity-30"
+      />
 
-            {/* texte */}
-            <div className="relative z-10 h-full flex items-end">
-              <div className="p-12 text-white max-w-xl">
-                <p className="text-xs font-semibold tracking-wide mb-3 opacity-90">
-                  GoMatch · World Cup 2030
-                </p>
+      {elements.orbes.map((orbe) => (
+        <motion.div
+          key={`orbe-${orbe.id}`}
+          // CHANGEMENT : bg-emerald -> bg-amber
+          className="absolute rounded-full bg-amber-500/10 blur-[100px]"
+          style={{
+            width: orbe.size,
+            height: orbe.size,
+            left: `${orbe.left}%`,
+            top: `${orbe.top}%`,
+          }}
+          animate={{
+            x: [0, 50, -50, 0],
+            y: [0, -50, 50, 0],
+            scale: [1, 1.2, 0.8, 1],
+          }}
+          transition={{
+            duration: orbe.duration,
+            repeat: Infinity,
+            ease: "easeInOut",
+          }}
+        />
+      ))}
 
-                <h1 className="text-4xl font-black leading-tight">
-                  Rejoins l’expérience 2030.
-                </h1>
+      {elements.cometes.map((comete) => (
+        <motion.div
+          key={`comet-${comete.id}`}
+          // CHANGEMENT : via-emerald -> via-amber
+          className="absolute h-[1px] w-[150px] bg-gradient-to-r from-transparent via-amber-500/40 to-transparent"
+          style={{ top: `${comete.top}%`, left: "-20%" }}
+          animate={{ left: ["-20%", "120%"] }}
+          transition={{
+            duration: comete.duration,
+            repeat: Infinity,
+            delay: comete.delay,
+            ease: "linear",
+          }}
+        />
+      ))}
+    </div>
+  );
+};
 
-                <p className="mt-3 text-sm text-white/85 leading-relaxed">
-                  Crée ton compte pour accéder aux matchs, tickets, expériences locales et recommandations IA.
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
+/* -------------------- ERRORS -------------------- */
+type FieldErrors = Partial<{
+  firstName: string;
+  lastName: string;
+  username: string;
+  email: string;
+  birthDate: string;
+  gender: string;
+  password: string;
+  confirmPassword: string;
+  accepted: string;
+}>;
 
-        {/* ================= RIGHT : FORM SCROLLABLE ================= */}
-        <section className="bg-white overflow-hidden">
-          {/* ✅ SEUL CETTE DIV SCROLL */}
-          <div className="h-full overflow-y-auto">
-            {/* ✅ padding + centrage vertical “soft” */}
-            <div className="min-h-full px-6 py-10 flex justify-center">
-              <div className="w-full max-w-sm">
-                <h2 className="text-3xl font-black mb-2">Créer un compte</h2>
-                <p className="text-sm text-black/60 mb-8">
-                  Inscris-toi pour commencer sur GoMatch.
-                </p>
+const stepFields: Record<number, (keyof FieldErrors)[]> = {
+  1: ["firstName", "lastName"],
+  2: ["email", "username"],
+  3: ["birthDate", "gender"],
+  4: ["password", "confirmPassword", "accepted"],
+};
 
-                {/* ✅ Form plus grand (tu peux rajouter des champs, ça scroll) */}
-                <form className="space-y-6">
-                  {/* PRENOM */}
-                  <div>
-                    <label className="text-xs font-semibold text-black/70">
-                      Prénom
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Ex: Samir"
-                      className="mt-2 w-full border-b border-black/30 py-3 outline-none focus:border-red-600 transition"
-                    />
-                  </div>
+function isValidEmail(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+}
 
-                  {/* NOM */}
-                  <div>
-                    <label className="text-xs font-semibold text-black/70">
-                      Nom
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Ex: Douhi"
-                      className="mt-2 w-full border-b border-black/30 py-3 outline-none focus:border-red-600 transition"
-                    />
-                  </div>
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
+}
 
-                  {/* EMAIL */}
-                  <div>
-                    <label className="text-xs font-semibold text-black/70">
-                      Adresse électronique
-                    </label>
-                    <input
-                      type="email"
-                      placeholder="email@exemple.com"
-                      className="mt-2 w-full border-b border-black/30 py-3 outline-none focus:border-red-600 transition"
-                    />
-                  </div>
+function fieldHasError(fieldErrors: FieldErrors, key: keyof FieldErrors) {
+  return typeof fieldErrors[key] === "string" && (fieldErrors[key] as string).trim().length > 0;
+}
 
-                  {/* CONFIRM EMAIL */}
-                  <div>
-                    <label className="text-xs font-semibold text-black/70">
-                      Confirmer l’adresse électronique
-                    </label>
-                    <input
-                      type="email"
-                      placeholder="email@exemple.com"
-                      className="mt-2 w-full border-b border-black/30 py-3 outline-none focus:border-red-600 transition"
-                    />
-                  </div>
+function firstErrorStep(fieldErrors: FieldErrors): number | null {
+  for (const s of [1, 2, 3, 4]) {
+    const fields = stepFields[s];
+    if (fields.some((f) => fieldHasError(fieldErrors, f))) return s;
+  }
+  return null;
+}
 
-                  {/* PASSWORD */}
-                  <div>
-                    <label className="text-xs font-semibold text-black/70">
-                      Mot de passe
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="password"
-                        placeholder="••••••••"
-                        className="mt-2 w-full border-b border-black/30 py-3 pr-10 outline-none focus:border-red-600 transition"
-                      />
-                      <EyeOff className="absolute right-0 top-1/2 -translate-y-1/2 h-4 w-4 text-black/40" />
-                    </div>
-                  </div>
+/* --------- backend parsing --------- */
+type AnyObj = Record<string, unknown>;
 
-                  {/* CONFIRM PASSWORD */}
-                  <div>
-                    <label className="text-xs font-semibold text-black/70">
-                      Confirmer le mot de passe
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="password"
-                        placeholder="••••••••"
-                        className="mt-2 w-full border-b border-black/30 py-3 pr-10 outline-none focus:border-red-600 transition"
-                      />
-                      <EyeOff className="absolute right-0 top-1/2 -translate-y-1/2 h-4 w-4 text-black/40" />
-                    </div>
-                  </div>
+function extractMessagesFromErrors(errors: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!errors || typeof errors !== "object") return out;
 
-                  {/* CGU */}
-                  <label className="flex items-start gap-2 text-sm text-black/60 pt-1">
-                    <input type="checkbox" className="mt-1 accent-red-600" />
-                    <span>
-                      J’accepte les{" "}
-                      <Link href="/terms" className="text-red-600 hover:underline font-semibold">
-                        conditions
-                      </Link>{" "}
-                      et la{" "}
-                      <Link href="/privacy" className="text-red-600 hover:underline font-semibold">
-                        politique de confidentialité
-                      </Link>
-                      .
-                    </span>
-                  </label>
+  for (const [k, v] of Object.entries(errors)) {
+    if (Array.isArray(v)) {
+      const msg = v.filter((x) => typeof x === "string" && x.trim()).join(" · ");
+      if (msg) out[k] = msg;
+    } else if (typeof v === "string" && v.trim()) {
+      out[k] = v.trim();
+    } else if (v && typeof v === "object") {
+      const nested = extractMessagesFromErrors(v);
+      for (const [nk, nv] of Object.entries(nested)) out[`${k}.${nk}`] = nv;
+    }
+  }
+  return out;
+}
 
-                  <button
-                    type="submit"
-                    className="w-full rounded-full bg-red-600 py-3 text-white font-bold hover:bg-red-700 transition"
-                  >
-                    S’inscrire
-                  </button>
-                </form>
+function pickString(obj: AnyObj, keys: string[]): string | null {
+  for (const k of keys) {
+    const val = obj?.[k];
+    if (typeof val === "string" && val.trim()) return val.trim();
+  }
+  return null;
+}
 
-                <div className="mt-8 text-center text-sm text-black/60">
-                  Déjà un compte ?{" "}
-                  <Link href="/signin" className="font-bold text-red-600 hover:underline">
-                    Se connecter
-                  </Link>
-                </div>
+async function readBodySmart(res: Response): Promise<unknown> {
+  const ct = res.headers.get("content-type") || "";
+  try {
+    if (ct.includes("application/json")) return await res.json();
+    return await res.text();
+  } catch {
+    return null;
+  }
+}
 
-                <div className="mt-10 text-center text-xs text-black/40">
-                  Conditions d’utilisation · Politique de confidentialité
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
-    </main>
+function backendToFieldErrors(payload: unknown, status: number): { fieldErrors: FieldErrors; global?: string } {
+  const fieldErrors: FieldErrors = {};
+  let global: string | undefined;
+
+  if (typeof payload === "string") {
+    const t = payload.trim();
+    if (t) global = t.length > 220 ? "Erreur serveur." : t;
+    if (!global) {
+      if (status === 409) fieldErrors.email = "Cet email est déjà utilisé.";
+      else global = `Inscription échouée (HTTP ${status}).`;
+    }
+    return { fieldErrors, global };
+  }
+
+  if (!payload || typeof payload !== "object") {
+    if (status === 409) fieldErrors.email = "Cet email est déjà utilisé.";
+    else if (status === 422) fieldErrors.password = "Mot de passe non valide (vérifie les conditions).";
+    else if (status === 400) global = "Données invalides.";
+    else global = `Inscription échouée (HTTP ${status}).`;
+    return { fieldErrors, global };
+  }
+
+  const d = payload as AnyObj;
+
+  const structured =
+    extractMessagesFromErrors(d.errors) ||
+    extractMessagesFromErrors(d.validationErrors) ||
+    extractMessagesFromErrors(d.modelState);
+
+  const keys = structured ? Object.keys(structured) : [];
+
+  if (keys.length > 0) {
+    for (const [k, msg] of Object.entries(structured)) {
+      const key = k.toLowerCase();
+      if (key.includes("email")) fieldErrors.email = msg;
+      else if (key.includes("user") || key.includes("pseudo") || key.includes("username")) fieldErrors.username = msg;
+      else if (key.includes("password") || key.includes("mdp")) fieldErrors.password = msg;
+      else if (key.includes("birth") || key.includes("date")) fieldErrors.birthDate = msg;
+      else if (key.includes("gender") || key.includes("sexe")) fieldErrors.gender = msg;
+      else global = msg;
+    }
+    return { fieldErrors, global };
+  }
+
+  const direct = pickString(d, ["erreur", "Erreur", "message", "error", "title", "detail", "description"]);
+  if (direct) {
+    const low = direct.toLowerCase();
+    if (status === 409 || (low.includes("email") && (low.includes("existe") || low.includes("already") || low.includes("utilisé")))) {
+      fieldErrors.email = direct;
+    } else if (low.includes("pseudo") || low.includes("username")) {
+      fieldErrors.username = direct;
+    } else if (low.includes("mot de passe") || low.includes("password")) {
+      fieldErrors.password = direct;
+    } else {
+      global = direct;
+    }
+    return { fieldErrors, global };
+  }
+
+  if (status === 409) fieldErrors.email = "Cet email est déjà utilisé.";
+  else if (status === 422) fieldErrors.password = "Mot de passe non valide (vérifie les conditions).";
+  else global = `Inscription échouée (HTTP ${status}).`;
+
+  return { fieldErrors, global };
+}
+
+function FieldError({ msg }: { msg?: string }) {
+  if (!msg) return null;
+  // CHANGEMENT : text-red-400 (Rouge Corail)
+  return (
+    <p className="mt-2 text-[9px] font-black uppercase tracking-widest text-red-500 drop-shadow-[0_0_6px_#ef4444]">
+      {msg}
+    </p>
   );
 }
 
+/* -------------------- PAGE -------------------- */
+export default function RegisterPage() {
+  const router = useRouter();
+  const [step, setStep] = useState(1);
+  const totalSteps = 4;
 
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
+  const [birthDate, setBirthDate] = useState("");
+  const [gender, setGender] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
+  const [accepted, setAccepted] = useState(false);
 
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [globalError, setGlobalError] = useState<string>("");
+
+  const [loading, setLoading] = useState(false);
+
+  function isStepValidNow(s: number) {
+    if (s === 1) return !!firstName.trim() && !!lastName.trim();
+    if (s === 2) return !!username.trim() && !!email.trim() && isValidEmail(email);
+    if (s === 3) return !!birthDate && !!gender;
+    if (s === 4) return !!password && !!confirmPassword && password === confirmPassword && accepted;
+    return false;
+  }
+
+  function validateCurrentStep(s: number): boolean {
+    const next: FieldErrors = {};
+
+    if (s === 1) {
+      if (!firstName.trim()) next.firstName = "Prénom obligatoire.";
+      if (!lastName.trim()) next.lastName = "Nom obligatoire.";
+    }
+
+    if (s === 2) {
+      if (!username.trim()) next.username = "Pseudo obligatoire.";
+      if (!email.trim()) next.email = "Email obligatoire.";
+      else if (!isValidEmail(email)) next.email = "Email invalide.";
+    }
+
+    if (s === 3) {
+      if (!birthDate) next.birthDate = "Date de naissance obligatoire.";
+      if (!gender) next.gender = "Choisis Homme ou Femme.";
+    }
+
+    if (s === 4) {
+      if (!password) next.password = "Mot de passe obligatoire.";
+      if (password) {
+        const rules: string[] = [];
+        if (password.length < 8) rules.push("8+ caractères");
+        if (!/[A-Z]/.test(password)) rules.push("1 majuscule");
+        if (!/[0-9]/.test(password)) rules.push("1 chiffre");
+        if (!/[^A-Za-z0-9]/.test(password)) rules.push("1 symbole");
+        if (rules.length) next.password = `Mot de passe : ${rules.join(", ")}.`;
+      }
+
+      if (!confirmPassword) next.confirmPassword = "Confirme le mot de passe.";
+      if (password && confirmPassword && password !== confirmPassword) {
+        next.confirmPassword = "Les mots de passe diffèrent.";
+      }
+
+      if (!accepted) next.accepted = "Accepte les conditions.";
+    }
+
+    setFieldErrors((prev) => {
+      const merged: FieldErrors = { ...prev };
+      for (const f of stepFields[s] ?? []) delete merged[f];
+      return { ...merged, ...next };
+    });
+
+    setGlobalError("");
+    return Object.keys(next).length === 0;
+  }
+
+  const nextStep = () => {
+    const ok = validateCurrentStep(step);
+    if (!ok) return; 
+    setStep((prev) => Math.min(totalSteps, prev + 1));
+  };
+
+  const prevStep = () => {
+    setGlobalError("");
+    setStep((prev) => Math.max(1, prev - 1));
+  };
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+
+    const ok = validateCurrentStep(4);
+    if (!ok) {
+      setStep(4);
+      return;
+    }
+
+    setLoading(true);
+    setGlobalError("");
+
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: normalizeEmail(email),
+          password,
+        }),
+      });
+
+      const payload = await readBodySmart(res);
+
+      if (!res.ok) {
+        const { fieldErrors: fe, global } = backendToFieldErrors(payload, res.status);
+        setFieldErrors((prev) => ({ ...prev, ...fe }));
+        setGlobalError(global ?? "");
+        const backendStep = firstErrorStep(fe);
+        if (backendStep) setStep(backendStep);
+        return;
+      }
+
+      setMockProfile({
+        displayName: `${firstName} ${lastName}`,
+        email: normalizeEmail(email),
+        onboardingCompleted: false,
+      });
+
+      router.replace("/signin?registered=1");
+    } catch {
+      setGlobalError("Erreur réseau : impossible de contacter le serveur.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    // CHANGEMENT : selection-bg-amber-500
+    <main className="dark min-h-screen w-full bg-[#010204] text-zinc-100 overflow-hidden font-sans antialiased selection:bg-amber-500/30">
+      <div className="grid grid-cols-1 lg:grid-cols-2 h-screen">
+        {/* SECTION GAUCHE */}
+        <section className="relative hidden lg:flex flex-col justify-between p-20 overflow-hidden border-r border-white/5 bg-zinc-950">
+          <motion.div
+            initial={{ scale: 1.1, opacity: 0 }}
+            animate={{ scale: 1, opacity: 0.6 }}
+            transition={{ duration: 1.5 }}
+            className="absolute inset-0 bg-[url('/photoRegister.png')] bg-cover bg-center"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#010204]/80 via-transparent to-transparent" />
+
+          <div className="relative z-10">
+            {/* CHANGEMENT : text-amber-400 (Ambre) */}
+            <p className="text-amber-400 font-black text-xs tracking-[0.5em] uppercase mb-2 drop-shadow-[0_0_8px_#fbbf24]">
+              GOMATCH · 2030
+            </p>
+            {/* CHANGEMENT : gradient from-white via-amber-400 to-red-500 */}
+            <h2 className="text-5xl font-[1000] leading-none tracking-tighter uppercase italic bg-gradient-to-r from-white via-amber-400 to-red-500 bg-[length:200%_auto] animate-gradient-text bg-clip-text text-transparent">
+              Rejoins <br /> L&apos;expérience 2030.
+            </h2>
+          </div>
+
+          <div className="relative z-10">
+            <h1 className="text-6xl font-[1000] tracking-tighter italic text-white leading-none uppercase">
+              Étape {step} <br />
+              {/* CHANGEMENT : text-amber-400 */}
+              <span className="text-amber-400 drop-shadow-[0_0_15px_rgba(251,191,36,0.5)]">
+                sur {totalSteps}
+              </span>
+            </h1>
+          </div>
+        </section>
+
+        {/* SECTION DROITE */}
+        <section className="relative flex flex-col items-center justify-center p-6 bg-[#010204] overflow-hidden">
+          <DynamicSpaceBackground />
+
+          <div className="w-full max-w-[440px] z-10">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-6 px-2">
+              <button
+                onClick={() => (step > 1 ? prevStep() : router.push("/"))}
+                // CHANGEMENT : hover:text-amber-400
+                className="flex items-center gap-2 text-[10px] font-black text-zinc-500 hover:text-amber-400 transition-all uppercase tracking-widest"
+              >
+                <ArrowLeft className="h-4 w-4" /> {step > 1 ? "Précédent" : "Retour"}
+              </button>
+
+              <div className="flex items-center gap-4">
+                <div className="flex gap-1.5">
+                  {[...Array(totalSteps)].map((_, i) => (
+                    <div
+                      key={i}
+                      // CHANGEMENT : bg-amber-500
+                      className={`h-1 w-5 rounded-full transition-all duration-300 ${
+                        step > i ? "bg-amber-500 shadow-[0_0_12px_#fbbf24]" : "bg-white/10"
+                      }`}
+                    />
+                  ))}
+                </div>
+                {/* CHANGEMENT : text-amber-400 */}
+                <Zap className="h-4 w-4 text-amber-400 fill-amber-400 animate-pulse drop-shadow-[0_0_8px_#fbbf24]" />
+              </div>
+            </div>
+
+            {/* CARD */}
+            <div className="relative p-[1.5px] rounded-[2.6rem] overflow-hidden">
+              <div className="absolute inset-0 bg-transparent">
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+                  // CHANGEMENT : Conic gradient Ambre -> Rouge
+                  className="absolute top-1/2 left-1/2 w-[200%] h-[200%] -translate-x-1/2 -translate-y-1/2 bg-[conic-gradient(from_0deg,transparent_0%,#fbbf24_25%,transparent_50%,#f85050_75%,transparent_100%)]"
+                />
+              </div>
+
+              <div className="relative rounded-[2.5rem] bg-[#0A0C10]/95 backdrop-blur-3xl p-10 border border-white/5 shadow-[0_0_50px_rgba(0,0,0,0.8)]">
+                <form onSubmit={handleSubmit} className="min-h-[320px] flex flex-col">
+                  <AnimatePresence mode="wait">
+                    {step === 1 && (
+                      <motion.div
+                        key="step1"
+                        initial={{ x: 20, opacity: 0 }}
+                        animate={{ x: 0, opacity: 1 }}
+                        exit={{ x: -20, opacity: 0 }}
+                        className="space-y-4 flex-1"
+                      >
+                        <h2 className="text-2xl font-[1000] text-white italic uppercase tracking-tighter mb-6">
+                          Parle-nous de toi
+                        </h2>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black text-zinc-500 uppercase ml-1">Prénom</label>
+                          <input
+                            type="text"
+                            value={firstName}
+                            onChange={(e) => {
+                              setFirstName(e.target.value);
+                              setFieldErrors((p) => ({ ...p, firstName: "" }));
+                            }}
+                            placeholder="Ton prénom"
+                            className={`cyber-input neon-focus ${fieldHasError(fieldErrors, "firstName") ? "border-red-500/40" : ""}`}
+                          />
+                          <FieldError msg={fieldErrors.firstName} />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black text-zinc-500 uppercase ml-1">Nom</label>
+                          <input
+                            type="text"
+                            value={lastName}
+                            onChange={(e) => {
+                              setLastName(e.target.value);
+                              setFieldErrors((p) => ({ ...p, lastName: "" }));
+                            }}
+                            placeholder="Ton nom"
+                            className={`cyber-input neon-focus ${fieldHasError(fieldErrors, "lastName") ? "border-red-500/40" : ""}`}
+                          />
+                          <FieldError msg={fieldErrors.lastName} />
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {step === 2 && (
+                      <motion.div
+                        key="step2"
+                        initial={{ x: 20, opacity: 0 }}
+                        animate={{ x: 0, opacity: 1 }}
+                        exit={{ x: -20, opacity: 0 }}
+                        className="space-y-4 flex-1"
+                      >
+                        <h2 className="text-2xl font-[1000] text-white italic uppercase tracking-tighter mb-6">
+                          Tes identifiants
+                        </h2>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black text-zinc-500 uppercase ml-1">Pseudo</label>
+                          <input
+                            type="text"
+                            value={username}
+                            onChange={(e) => {
+                              setUsername(e.target.value);
+                              setFieldErrors((p) => ({ ...p, username: "" }));
+                            }}
+                            placeholder="@pseudo_2030"
+                            className={`cyber-input neon-focus ${fieldHasError(fieldErrors, "username") ? "border-red-500/40" : ""}`}
+                          />
+                          <FieldError msg={fieldErrors.username} />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black text-zinc-500 uppercase ml-1">Email</label>
+                          <input
+                            type="email"
+                            value={email}
+                            onChange={(e) => {
+                              setEmail(e.target.value);
+                              setFieldErrors((p) => ({ ...p, email: "" }));
+                            }}
+                            placeholder="votre@email.com"
+                            className={`cyber-input neon-focus ${fieldHasError(fieldErrors, "email") ? "border-red-500/40" : ""}`}
+                          />
+                          <FieldError msg={fieldErrors.email} />
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {step === 3 && (
+                      <motion.div
+                        key="step3"
+                        initial={{ x: 20, opacity: 0 }}
+                        animate={{ x: 0, opacity: 1 }}
+                        exit={{ x: -20, opacity: 0 }}
+                        className="space-y-4 flex-1"
+                      >
+                        <h2 className="text-2xl font-[1000] text-white italic uppercase tracking-tighter mb-6">
+                          Détails
+                        </h2>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black text-zinc-500 uppercase ml-1">
+                            Date de naissance
+                          </label>
+                          <input
+                            type="date"
+                            value={birthDate}
+                            onChange={(e) => {
+                              setBirthDate(e.target.value);
+                              setFieldErrors((p) => ({ ...p, birthDate: "" }));
+                            }}
+                            className={`cyber-input neon-focus ${fieldHasError(fieldErrors, "birthDate") ? "border-red-500/40" : ""}`}
+                          />
+                          <FieldError msg={fieldErrors.birthDate} />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black text-zinc-500 uppercase ml-1">Sexe</label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setGender("M");
+                                setFieldErrors((p) => ({ ...p, gender: "" }));
+                              }}
+                              // CHANGEMENT : border-amber-500 text-amber-400
+                              className={`py-3 rounded-xl border text-[10px] font-bold uppercase transition-all duration-300 ${
+                                gender === "M"
+                                  ? "border-amber-500 bg-amber-500/20 text-amber-400 shadow-[0_0_15px_rgba(251,191,36,0.3)]"
+                                  : "border-white/5 bg-white/5 text-zinc-500 hover:border-white/10"
+                              }`}
+                            >
+                              Homme
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setGender("F");
+                                setFieldErrors((p) => ({ ...p, gender: "" }));
+                              }}
+                              // CHANGEMENT : border-amber-500 text-amber-400
+                              className={`py-3 rounded-xl border text-[10px] font-bold uppercase transition-all duration-300 ${
+                                gender === "F"
+                                  ? "border-amber-500 bg-amber-500/20 text-amber-400 shadow-[0_0_15px_rgba(251,191,36,0.3)]"
+                                  : "border-white/5 bg-white/5 text-zinc-500 hover:border-white/10"
+                              }`}
+                            >
+                              Femme
+                            </button>
+                          </div>
+                          <FieldError msg={fieldErrors.gender} />
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {step === 4 && (
+                      <motion.div
+                        key="step4"
+                        initial={{ x: 20, opacity: 0 }}
+                        animate={{ x: 0, opacity: 1 }}
+                        exit={{ x: -20, opacity: 0 }}
+                        className="space-y-4 flex-1"
+                      >
+                        <h2 className="text-2xl font-[1000] text-white italic uppercase tracking-tighter mb-6">
+                          Sécurité
+                        </h2>
+
+                        <div>
+                          <input
+                            type="password"
+                            value={password}
+                            onChange={(e) => {
+                              setPassword(e.target.value);
+                              setFieldErrors((p) => ({ ...p, password: "" }));
+                            }}
+                            placeholder="Mot de passe"
+                            className={`cyber-input neon-focus mb-2 ${fieldHasError(fieldErrors, "password") ? "border-red-500/40" : ""}`}
+                          />
+                          <FieldError msg={fieldErrors.password} />
+                        </div>
+
+                        <div>
+                          <input
+                            type="password"
+                            value={confirmPassword}
+                            onChange={(e) => {
+                              setConfirmPassword(e.target.value);
+                              setFieldErrors((p) => ({ ...p, confirmPassword: "" }));
+                            }}
+                            placeholder="Confirmer mot de passe"
+                            className={`cyber-input neon-focus mb-2 ${fieldHasError(fieldErrors, "confirmPassword") ? "border-red-500/40" : ""}`}
+                          />
+                          <FieldError msg={fieldErrors.confirmPassword} />
+                        </div>
+
+                        <label className="flex items-start gap-2 pt-4 cursor-pointer group">
+                          <input
+                            type="checkbox"
+                            checked={accepted}
+                            onChange={(e) => {
+                              setAccepted(e.target.checked);
+                              setFieldErrors((p) => ({ ...p, accepted: "" }));
+                            }}
+                            // CHANGEMENT : accent-amber-500
+                            className="mt-1 accent-amber-500"
+                          />
+                          <span className="text-[9px] text-zinc-500 font-bold uppercase leading-tight group-hover:text-zinc-300 transition-colors">
+                            J&apos;accepte les conditions GoMatch.
+                          </span>
+                        </label>
+                        <FieldError msg={fieldErrors.accepted} />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {globalError && (
+                    <p className="text-red-500 text-[9px] font-black uppercase text-center mt-4 tracking-widest drop-shadow-[0_0_5px_#ef4444]">
+                      {globalError}
+                    </p>
+                  )}
+
+                  <div className="mt-8">
+                    {step < totalSteps ? (
+                      <button
+                        type="button"
+                        onClick={nextStep}
+                        disabled={!isStepValidNow(step)}
+                        // CHANGEMENT : bg-amber-500 hover:bg-amber-400
+                        className="w-full bg-amber-500 hover:bg-amber-400 disabled:opacity-40 disabled:cursor-not-allowed py-4 rounded-2xl text-zinc-950 font-[1000] text-[10px] uppercase tracking-[0.2em] flex items-center justify-center gap-2 transition-all duration-300 hover:shadow-[0_0_25px_rgba(251,191,36,0.5)]"
+                      >
+                        Suivant <ArrowRight className="h-4 w-4" />
+                      </button>
+                    ) : (
+                      <button
+                        disabled={loading || !isStepValidNow(step)}
+                        // CHANGEMENT : bg-amber-500 hover:bg-amber-400
+                        className="w-full bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed py-4 rounded-2xl text-zinc-950 font-[1000] text-[10px] uppercase tracking-[0.2em] transition-all duration-300 shadow-[0_10px_20px_-5px_rgba(251,191,36,0.4)] hover:shadow-[0_0_30px_rgba(251,191,36,0.6)]"
+                      >
+                        {loading ? "CRÉATION..." : "TERMINER L'INSCRIPTION"}
+                      </button>
+                    )}
+                  </div>
+                </form>
+              </div>
+            </div>
+
+            <p className="text-center mt-6 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
+              DÉJÀ UN COMPTE ?{" "}
+              {/* CHANGEMENT : hover:text-amber-400 */}
+              <Link href="/signin" className="text-white hover:text-amber-400 transition-colors">
+                SE CONNECTER
+              </Link>
+            </p>
+          </div>
+        </section>
+      </div>
+
+      <style jsx global>{`
+        @keyframes gradient-text {
+          0% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
+        .animate-gradient-text { animation: gradient-text 4s ease infinite; }
+        .cyber-input {
+          width: 100%;
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 1.2rem;
+          padding: 1.2rem;
+          font-size: 0.85rem;
+          color: white;
+          outline: none;
+          transition: all 0.3s ease;
+        }
+        /* CHANGEMENT : border-color rgba ambre */
+        .neon-focus:focus {
+          border-color: rgba(251, 191, 36, 0.4);
+          background: rgba(251, 191, 36, 0.04);
+        }
+        input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); }
+      `}</style>
+    </main>
+  );
+}

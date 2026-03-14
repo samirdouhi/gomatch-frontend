@@ -2,52 +2,61 @@
 
 import * as React from "react";
 import { useTheme } from "next-themes";
-import { Moon, Sun } from "lucide-react";
+import { Moon, Sun, Monitor } from "lucide-react";
+import { motion } from "framer-motion";
 
 export function ThemeToggle() {
-  const { theme, setTheme, resolvedTheme } = useTheme();
+  const { theme, setTheme, systemTheme } = useTheme();
   const [mounted, setMounted] = React.useState(false);
 
   React.useEffect(() => setMounted(true), []);
+  if (!mounted) return null;
 
-  // Evite le mismatch hydration Next.js
-  if (!mounted) {
-    return (
-      <div className="flex items-center gap-2 rounded-2xl border border-border bg-card px-2 py-1">
-        <button
-          type="button"
-          className="h-9 w-9 rounded-xl flex items-center justify-center transition text-foreground/80"
-          aria-label="Toggle theme"
-          title="Toggle theme"
-          disabled
-        >
-          <Sun className="h-4 w-4 opacity-60" />
-        </button>
-      </div>
-    );
-  }
+  const current = theme === "system" ? systemTheme : theme;
 
-  const current = theme === "system" ? resolvedTheme : theme;
-  const isDark = current === "dark";
+  const options = [
+    { key: "light", icon: Sun, label: "Light" },
+    { key: "dark", icon: Moon, label: "Dark" },
+    { key: "system", icon: Monitor, label: "System" },
+  ];
 
   return (
-    <div className="flex items-center gap-2 rounded-2xl border border-border bg-card px-2 py-1">
-      <button
-        type="button"
-        onClick={() => setTheme(isDark ? "light" : "dark")}
-        className={[
-          "h-9 w-9 rounded-xl flex items-center justify-center transition",
-          // Style actif (comme ton ancien style)
-          isDark ? "bg-foreground text-background" : "text-foreground/80 hover:bg-muted",
-        ].join(" ")}
-        aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
-        title={isDark ? "Light mode" : "Dark mode"}
-      >
-        {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-      </button>
+    <div className="flex items-center gap-1 rounded-2xl border border-white/10 bg-black/40 p-1.5 backdrop-blur-xl shadow-2xl">
+      {options.map((option) => {
+        const Icon = option.icon;
+        const isActive = theme === option.key;
+
+        return (
+          <button
+            key={option.key}
+            type="button"
+            onClick={() => setTheme(option.key)}
+            className="relative h-9 w-9 rounded-xl flex items-center justify-center transition-all duration-300 group"
+            aria-label={option.label}
+          >
+            {/* Background actif animé */}
+            {isActive && (
+              <motion.div
+                layoutId="activeTab"
+                className="absolute inset-0 rounded-xl bg-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.4)]"
+                transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+              />
+            )}
+
+            {/* Icône avec effet Neon au survol */}
+            <Icon
+              className={[
+                "relative z-10 h-4 w-4 transition-all duration-300",
+                isActive 
+                  ? "text-black stroke-[2.5px]" 
+                  : "text-zinc-500 group-hover:text-amber-400 group-hover:drop-shadow-[0_0_5px_rgba(245,158,11,0.8)]",
+              ].join(" ")}
+            />
+          </button>
+        );
+      })}
     </div>
   );
 }
-
 
 

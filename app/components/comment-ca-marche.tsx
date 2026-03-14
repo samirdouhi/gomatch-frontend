@@ -69,124 +69,114 @@ export function CommentCaMarcheSection() {
   return (
     <section
       id="comment-ca-marche"
-      className="relative overflow-hidden bg-black py-14 sm:py-20"
+      className="relative overflow-hidden bg-black py-14 sm:py-24"
     >
-      {/* Background premium */}
+      {/* Background futuriste avec les couleurs Ambre/Emeraude du projet */}
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -top-44 left-1/2 h-[560px] w-[560px] -translate-x-1/2 rounded-full bg-red-600/12 blur-3xl" />
-        <div className="absolute -bottom-44 right-[-10%] h-[560px] w-[560px] rounded-full bg-emerald-500/10 blur-3xl" />
-        <div className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(0,0,0,0.45),rgba(0,0,0,0.93))]" />
-        <div className="absolute inset-0 opacity-[0.10] [background-image:linear-gradient(to_right,rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:44px_44px]" />
+        <div className="absolute -top-44 left-1/4 h-[600px] w-[600px] rounded-full bg-amber-600/10 blur-[120px]" />
+        <div className="absolute -bottom-44 right-[-5%] h-[600px] w-[600px] rounded-full bg-emerald-500/10 blur-[120px]" />
+        <div className="absolute inset-0 bg-black/40" />
+        <div className="absolute inset-0 opacity-[0.05] [background-image:linear-gradient(to_right,rgba(255,255,255,0.1)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.1)_1px,transparent_1px)] [background-size:60px_60px]" />
       </div>
 
-      <div className="container relative mx-auto px-4">
-        {/* Header */}
+      <div className="container relative mx-auto px-6">
+        {/* Header style "Cockpit" */}
         <motion.div
-          initial={{ opacity: 0, y: 10 }}
+          initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-80px" }}
-          transition={{ duration: 0.5, ease: "easeOut" }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.7 }}
           className="mx-auto max-w-3xl text-center"
         >
-          <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-white/80">
-            <HelpCircle className="h-4 w-4 text-red-500" />
-            Comment ça marche ? • Simple • Rapide • Local
+          <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-[10px] font-black uppercase tracking-[0.3em] text-amber-500">
+            <HelpCircle className="h-3.5 w-3.5" />
+            Guide Utilisateur • Système GoMatch
           </div>
 
-          <h2 className="mt-5 text-3xl font-bold tracking-tight text-white sm:text-4xl lg:text-5xl">
-            Comment ça marche ?
+          <h2 className="mt-8 text-4xl font-black tracking-tighter text-white sm:text-5xl lg:text-7xl uppercase italic">
+            Comment ça <span className="text-amber-500 not-italic">marche ?</span>
           </h2>
 
-          <p className="mt-4 text-base leading-relaxed text-white/75 sm:text-lg">
+          <p className="mt-6 text-base leading-relaxed text-zinc-400 sm:text-xl font-medium">
             Trouvez des adresses proches, gagnez du temps et vivez une expérience
-            locale authentique — avant et après le match.
+            locale authentique au cœur du <span className="text-white italic">Maroc 2030</span>.
           </p>
 
-          <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <Button className="h-11 w-full rounded-2xl bg-red-600 px-6 text-white hover:bg-red-700 sm:w-auto">
-              Commencer maintenant <ArrowRight className="ml-2 h-4 w-4" />
+          <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
+            <Button className="h-14 w-full rounded-2xl bg-amber-500 px-8 text-sm font-black uppercase tracking-widest text-black hover:scale-105 transition-transform sm:w-auto">
+              Commencer <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
 
             <Button
               asChild
               variant="outline"
-              className="h-11 w-full rounded-2xl border-white/15 bg-transparent px-6 text-white hover:bg-white/5 sm:w-auto"
+              className="h-14 w-full rounded-2xl border-white/10 bg-white/5 px-8 text-sm font-black uppercase tracking-widest text-white hover:bg-white/10 sm:w-auto shadow-xl backdrop-blur-md"
             >
               <Link href="/businesses">Voir les lieux</Link>
             </Button>
           </div>
         </motion.div>
 
-        {/* Steps */}
-        <div className="mx-auto mt-12 max-w-6xl">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {/* Steps : Cartes avec effet de verre */}
+        <div className="mx-auto mt-20 max-w-6xl">
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {steps.map((s, idx) => {
               const Icon = s.icon;
               return (
                 <motion.div
                   key={idx}
-                  initial={{ opacity: 0, y: 10 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true, margin: "-80px" }}
-                  transition={{ duration: 0.45, delay: idx * 0.05 }}
-                  className="rounded-3xl border border-white/10 bg-white/5 p-5 shadow-[0_30px_90px_rgba(0,0,0,0.35)]"
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  whileInView={{ opacity: 1, scale: 1 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.5, delay: idx * 0.1 }}
+                  className="group relative rounded-[2.5rem] border border-white/5 bg-white/5 p-7 backdrop-blur-xl hover:border-amber-500/30 transition-all shadow-2xl"
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-black/40 ring-1 ring-white/10">
-                      <Icon className="h-5 w-5 text-red-500" />
+                  <div className="flex items-center justify-between mb-6">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-500 group-hover:scale-110 transition-transform">
+                      <Icon className="h-6 w-6" />
                     </div>
-                    <div className="text-sm font-semibold text-white/90">
-                      Étape {idx + 1}
-                    </div>
+                    <span className="text-[10px] font-black text-white/20 uppercase tracking-widest">Étape 0{idx + 1}</span>
                   </div>
 
-                  <div className="mt-4 text-base font-semibold text-white">
+                  <h3 className="text-lg font-black text-white uppercase tracking-tighter italic leading-none">
                     {s.title}
-                  </div>
-                  <div className="mt-2 text-sm leading-relaxed text-white/65">
+                  </h3>
+                  <p className="mt-4 text-sm leading-relaxed text-zinc-500 font-medium">
                     {s.desc}
-                  </div>
+                  </p>
                 </motion.div>
               );
             })}
           </div>
         </div>
 
-        {/* Features */}
-        <div className="mx-auto mt-12 max-w-6xl">
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-6 sm:p-8">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        {/* Features : Section émeraude pour le contraste */}
+        <div className="mx-auto mt-16 max-w-6xl">
+          <div className="rounded-[3rem] border border-white/5 bg-white/5 p-8 sm:p-12 backdrop-blur-2xl">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h3 className="text-xl font-bold text-white sm:text-2xl">
-                  Ce que vous gagnez
+                <h3 className="text-2xl font-black text-white uppercase tracking-tighter italic sm:text-3xl">
+                  Ce que vous <span className="text-emerald-400">gagnez</span>
                 </h3>
-                <p className="mt-1 text-sm text-white/65">
-                  Pensé pour les supporters et les visiteurs pendant Maroc 2030.
+                <p className="mt-2 text-sm text-zinc-500 font-bold uppercase tracking-widest">
+                  Optimisé pour les supporters de Maroc 2030
                 </p>
               </div>
-
-              <Button
-                asChild
-                variant="outline"
-                className="h-10 w-full rounded-2xl border-white/15 bg-transparent px-4 text-white hover:bg-white/5 sm:w-auto"
-              >
-                <Link href="/businesses">Explorer les lieux</Link>
-              </Button>
             </div>
 
-            <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
               {features.map((f, idx) => {
                 const Icon = f.icon;
                 return (
                   <div
                     key={idx}
-                    className="rounded-2xl border border-white/10 bg-black/25 p-5"
+                    className="rounded-3xl border border-white/5 bg-black/40 p-6 hover:bg-black/60 transition-colors"
                   >
-                    <Icon className="h-5 w-5 text-emerald-400" />
-                    <div className="mt-3 font-semibold text-white">
+                    <Icon className="h-6 w-6 text-emerald-400 mb-4" />
+                    <div className="font-black text-white uppercase tracking-tighter italic">
                       {f.title}
                     </div>
-                    <div className="mt-1 text-sm text-white/65">{f.desc}</div>
+                    <div className="mt-2 text-xs text-zinc-500 leading-relaxed font-medium">{f.desc}</div>
                   </div>
                 );
               })}
@@ -194,23 +184,23 @@ export function CommentCaMarcheSection() {
           </div>
         </div>
 
-        {/* FAQ */}
-        <div className="mx-auto mt-12 max-w-4xl">
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-6 sm:p-8">
-            <h3 className="text-xl font-bold text-white sm:text-2xl">FAQ</h3>
-            <div className="mt-5 space-y-3">
+        {/* FAQ stylisée comme le reste du site */}
+        <div className="mx-auto mt-16 max-w-4xl">
+          <div className="rounded-[3rem] border border-white/5 bg-black/20 p-8 backdrop-blur-md">
+            <h3 className="text-2xl font-black text-white uppercase tracking-tighter italic text-center mb-10">F.A.Q</h3>
+            <div className="space-y-4">
               {faqs.map((item, idx) => (
                 <details
                   key={idx}
-                  className="group rounded-2xl border border-white/10 bg-black/25 p-4"
+                  className="group rounded-2xl border border-white/5 bg-white/5 p-5 transition-all hover:bg-white/[0.07] open:border-amber-500/30 open:bg-amber-500/[0.03]"
                 >
-                  <summary className="cursor-pointer list-none font-semibold text-white/90">
+                  <summary className="cursor-pointer list-none font-bold text-sm uppercase tracking-tight text-zinc-300 flex justify-between items-center group-open:text-amber-500 transition-colors">
                     {item.q}
-                    <span className="float-right text-white/40 group-open:text-white/70">
+                    <div className="h-6 w-6 rounded-lg bg-white/5 flex items-center justify-center text-xs transition-transform group-open:rotate-45">
                       +
-                    </span>
+                    </div>
                   </summary>
-                  <p className="mt-3 text-sm leading-relaxed text-white/65">
+                  <p className="mt-4 text-sm leading-relaxed text-zinc-500 font-medium border-t border-white/5 pt-4">
                     {item.a}
                   </p>
                 </details>
@@ -219,35 +209,37 @@ export function CommentCaMarcheSection() {
           </div>
         </div>
 
-        {/* Final CTA */}
-        <div className="mx-auto mt-12 max-w-6xl">
-          <div className="rounded-3xl border border-white/10 bg-gradient-to-r from-red-600/20 to-emerald-500/10 p-6 sm:p-8">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h4 className="text-lg font-bold text-white sm:text-xl">
-                  Prêt à découvrir autour de vous ?
-                </h4>
-                <p className="mt-1 text-sm text-white/75">
-                  Lancez la carte et trouvez une adresse en moins d’une minute.
-                </p>
-              </div>
+        {/* Final CTA Holographique */}
+        <motion.div 
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          className="mx-auto mt-20 max-w-6xl"
+        >
+          <div className="relative rounded-[3rem] overflow-hidden border border-amber-500/20 bg-gradient-to-br from-amber-500/10 to-emerald-500/5 p-10 sm:p-16 text-center shadow-2xl">
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-amber-500 to-transparent opacity-50" />
+            
+            <h4 className="text-3xl font-black text-white uppercase tracking-tighter italic sm:text-5xl">
+              Prêt à vivre <span className="text-amber-500">l&apos;immersion ?</span>
+            </h4>
+            <p className="mt-6 text-zinc-400 font-medium max-w-xl mx-auto text-lg">
+              Lancez la carte et trouvez une adresse authentique en moins d’une minute.
+            </p>
 
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <Button className="h-11 rounded-2xl bg-red-600 px-6 text-white hover:bg-red-700">
-                  Explorer maintenant <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
+            <div className="mt-10 flex flex-col gap-4 sm:flex-row justify-center">
+              <Button className="h-14 rounded-2xl bg-amber-500 px-10 text-xs font-black uppercase tracking-widest text-black hover:scale-105 transition-all">
+                Explorer maintenant <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
 
-                <Button
-                  asChild
-                  variant="outline"
-                  className="h-11 rounded-2xl border-white/15 bg-transparent px-6 text-white hover:bg-white/5"
-                >
-                  <Link href="/assistant">Suggestions personnalisées</Link>
-                </Button>
-              </div>
+              <Button
+                asChild
+                variant="outline"
+                className="h-14 rounded-2xl border-white/10 bg-black/20 px-10 text-xs font-black uppercase tracking-widest text-white hover:bg-white/5"
+              >
+                <Link href="/assistant">Suggestions IA</Link>
+              </Button>
             </div>
           </div>
-        </div>
+        </motion.div>
       </div>
     </section>
   );
