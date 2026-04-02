@@ -5,7 +5,7 @@ import { ArrowLeft, Zap, ArrowRight } from "lucide-react";
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { setMockProfile } from "@/lib/profileMock";
+import NationaliteSelect from "@/components/NationaliteSelect";
 
 /* -------------------- BACKGROUND TYPES -------------------- */
 interface Orbe {
@@ -54,14 +54,12 @@ const DynamicSpaceBackground = () => {
       <motion.div
         animate={{ y: [0, -40] }}
         transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
-        // CHANGEMENT : Couleur de la grille (Ambre très léger)
         className="absolute inset-0 bg-[linear-gradient(to_right,#ffd70005_1px,transparent_1px),linear-gradient(to_bottom,#ffd70005_1px,transparent_1px)] bg-[size:40px_40px] opacity-30"
       />
 
       {elements.orbes.map((orbe) => (
         <motion.div
           key={`orbe-${orbe.id}`}
-          // CHANGEMENT : bg-emerald -> bg-amber
           className="absolute rounded-full bg-amber-500/10 blur-[100px]"
           style={{
             width: orbe.size,
@@ -85,7 +83,6 @@ const DynamicSpaceBackground = () => {
       {elements.cometes.map((comete) => (
         <motion.div
           key={`comet-${comete.id}`}
-          // CHANGEMENT : via-emerald -> via-amber
           className="absolute h-[1px] w-[150px] bg-gradient-to-r from-transparent via-amber-500/40 to-transparent"
           style={{ top: `${comete.top}%`, left: "-20%" }}
           animate={{ left: ["-20%", "120%"] }}
@@ -105,8 +102,8 @@ const DynamicSpaceBackground = () => {
 type FieldErrors = Partial<{
   firstName: string;
   lastName: string;
-  username: string;
   email: string;
+  nationalite: string;
   birthDate: string;
   gender: string;
   password: string;
@@ -116,7 +113,7 @@ type FieldErrors = Partial<{
 
 const stepFields: Record<number, (keyof FieldErrors)[]> = {
   1: ["firstName", "lastName"],
-  2: ["email", "username"],
+  2: ["email", "nationalite"],
   3: ["birthDate", "gender"],
   4: ["password", "confirmPassword", "accepted"],
 };
@@ -215,10 +212,12 @@ function backendToFieldErrors(payload: unknown, status: number): { fieldErrors: 
     for (const [k, msg] of Object.entries(structured)) {
       const key = k.toLowerCase();
       if (key.includes("email")) fieldErrors.email = msg;
-      else if (key.includes("user") || key.includes("pseudo") || key.includes("username")) fieldErrors.username = msg;
+      else if (key.includes("nationalite") || key.includes("nationality")) fieldErrors.nationalite = msg;
       else if (key.includes("password") || key.includes("mdp")) fieldErrors.password = msg;
       else if (key.includes("birth") || key.includes("date")) fieldErrors.birthDate = msg;
       else if (key.includes("gender") || key.includes("sexe")) fieldErrors.gender = msg;
+      else if (key.includes("prenom") || key.includes("firstname")) fieldErrors.firstName = msg;
+      else if (key.includes("nom") || key.includes("lastname")) fieldErrors.lastName = msg;
       else global = msg;
     }
     return { fieldErrors, global };
@@ -229,10 +228,18 @@ function backendToFieldErrors(payload: unknown, status: number): { fieldErrors: 
     const low = direct.toLowerCase();
     if (status === 409 || (low.includes("email") && (low.includes("existe") || low.includes("already") || low.includes("utilisé")))) {
       fieldErrors.email = direct;
-    } else if (low.includes("pseudo") || low.includes("username")) {
-      fieldErrors.username = direct;
+    } else if (low.includes("nationalite") || low.includes("nationality")) {
+      fieldErrors.nationalite = direct;
     } else if (low.includes("mot de passe") || low.includes("password")) {
       fieldErrors.password = direct;
+    } else if (low.includes("prénom") || low.includes("prenom") || low.includes("first name") || low.includes("firstname")) {
+      fieldErrors.firstName = direct;
+    } else if (low.includes("nom") || low.includes("last name") || low.includes("lastname")) {
+      fieldErrors.lastName = direct;
+    } else if (low.includes("date")) {
+      fieldErrors.birthDate = direct;
+    } else if (low.includes("genre") || low.includes("gender") || low.includes("sexe")) {
+      fieldErrors.gender = direct;
     } else {
       global = direct;
     }
@@ -248,7 +255,6 @@ function backendToFieldErrors(payload: unknown, status: number): { fieldErrors: 
 
 function FieldError({ msg }: { msg?: string }) {
   if (!msg) return null;
-  // CHANGEMENT : text-red-400 (Rouge Corail)
   return (
     <p className="mt-2 text-[9px] font-black uppercase tracking-widest text-red-500 drop-shadow-[0_0_6px_#ef4444]">
       {msg}
@@ -265,7 +271,7 @@ export default function RegisterPage() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
-  const [username, setUsername] = useState("");
+  const [nationalite, setNationalite] = useState("");
   const [birthDate, setBirthDate] = useState("");
   const [gender, setGender] = useState("");
   const [password, setPassword] = useState("");
@@ -280,7 +286,7 @@ export default function RegisterPage() {
 
   function isStepValidNow(s: number) {
     if (s === 1) return !!firstName.trim() && !!lastName.trim();
-    if (s === 2) return !!username.trim() && !!email.trim() && isValidEmail(email);
+    if (s === 2) return !!email.trim() && isValidEmail(email) && !!nationalite.trim();
     if (s === 3) return !!birthDate && !!gender;
     if (s === 4) return !!password && !!confirmPassword && password === confirmPassword && accepted;
     return false;
@@ -295,9 +301,10 @@ export default function RegisterPage() {
     }
 
     if (s === 2) {
-      if (!username.trim()) next.username = "Pseudo obligatoire.";
       if (!email.trim()) next.email = "Email obligatoire.";
       else if (!isValidEmail(email)) next.email = "Email invalide.";
+
+      if (!nationalite.trim()) next.nationalite = "Nationalité obligatoire.";
     }
 
     if (s === 3) {
@@ -336,7 +343,7 @@ export default function RegisterPage() {
 
   const nextStep = () => {
     const ok = validateCurrentStep(step);
-    if (!ok) return; 
+    if (!ok) return;
     setStep((prev) => Math.min(totalSteps, prev + 1));
   };
 
@@ -358,12 +365,18 @@ export default function RegisterPage() {
     setGlobalError("");
 
     try {
-      const res = await fetch("/api/auth/register", {
+      const res = await fetch("/api/gateway/register-complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: normalizeEmail(email),
           password,
+          confirmPassword,
+          prenom: firstName.trim(),
+          nom: lastName.trim(),
+          nationalite: nationalite.trim(),
+          dateNaissance: birthDate,
+          genre: gender,
         }),
       });
 
@@ -378,12 +391,6 @@ export default function RegisterPage() {
         return;
       }
 
-      setMockProfile({
-        displayName: `${firstName} ${lastName}`,
-        email: normalizeEmail(email),
-        onboardingCompleted: false,
-      });
-
       router.replace("/signin?registered=1");
     } catch {
       setGlobalError("Erreur réseau : impossible de contacter le serveur.");
@@ -393,7 +400,6 @@ export default function RegisterPage() {
   }
 
   return (
-    // CHANGEMENT : selection-bg-amber-500
     <main className="dark min-h-screen w-full bg-[#010204] text-zinc-100 overflow-hidden font-sans antialiased selection:bg-amber-500/30">
       <div className="grid grid-cols-1 lg:grid-cols-2 h-screen">
         {/* SECTION GAUCHE */}
@@ -407,11 +413,9 @@ export default function RegisterPage() {
           <div className="absolute inset-0 bg-gradient-to-t from-[#010204]/80 via-transparent to-transparent" />
 
           <div className="relative z-10">
-            {/* CHANGEMENT : text-amber-400 (Ambre) */}
             <p className="text-amber-400 font-black text-xs tracking-[0.5em] uppercase mb-2 drop-shadow-[0_0_8px_#fbbf24]">
               GOMATCH · 2030
             </p>
-            {/* CHANGEMENT : gradient from-white via-amber-400 to-red-500 */}
             <h2 className="text-5xl font-[1000] leading-none tracking-tighter uppercase italic bg-gradient-to-r from-white via-amber-400 to-red-500 bg-[length:200%_auto] animate-gradient-text bg-clip-text text-transparent">
               Rejoins <br /> L&apos;expérience 2030.
             </h2>
@@ -420,7 +424,6 @@ export default function RegisterPage() {
           <div className="relative z-10">
             <h1 className="text-6xl font-[1000] tracking-tighter italic text-white leading-none uppercase">
               Étape {step} <br />
-              {/* CHANGEMENT : text-amber-400 */}
               <span className="text-amber-400 drop-shadow-[0_0_15px_rgba(251,191,36,0.5)]">
                 sur {totalSteps}
               </span>
@@ -437,7 +440,6 @@ export default function RegisterPage() {
             <div className="flex items-center justify-between mb-6 px-2">
               <button
                 onClick={() => (step > 1 ? prevStep() : router.push("/"))}
-                // CHANGEMENT : hover:text-amber-400
                 className="flex items-center gap-2 text-[10px] font-black text-zinc-500 hover:text-amber-400 transition-all uppercase tracking-widest"
               >
                 <ArrowLeft className="h-4 w-4" /> {step > 1 ? "Précédent" : "Retour"}
@@ -448,31 +450,29 @@ export default function RegisterPage() {
                   {[...Array(totalSteps)].map((_, i) => (
                     <div
                       key={i}
-                      // CHANGEMENT : bg-amber-500
                       className={`h-1 w-5 rounded-full transition-all duration-300 ${
                         step > i ? "bg-amber-500 shadow-[0_0_12px_#fbbf24]" : "bg-white/10"
                       }`}
                     />
                   ))}
                 </div>
-                {/* CHANGEMENT : text-amber-400 */}
                 <Zap className="h-4 w-4 text-amber-400 fill-amber-400 animate-pulse drop-shadow-[0_0_8px_#fbbf24]" />
               </div>
             </div>
 
-            {/* CARD */}
-            <div className="relative p-[1.5px] rounded-[2.6rem] overflow-hidden">
-              <div className="absolute inset-0 bg-transparent">
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
-                  // CHANGEMENT : Conic gradient Ambre -> Rouge
-                  className="absolute top-1/2 left-1/2 w-[200%] h-[200%] -translate-x-1/2 -translate-y-1/2 bg-[conic-gradient(from_0deg,transparent_0%,#fbbf24_25%,transparent_50%,#f85050_75%,transparent_100%)]"
-                />
-              </div>
+         {/* CARD */}
+<div className="relative p-[1.5px] rounded-[2.6rem]">
+  {/* Couche d'animation de bordure : On garde le overflow-hidden SEULEMENT ici */}
+  <div className="absolute inset-0 rounded-[2.6rem] overflow-hidden pointer-events-none">
+    <motion.div
+      animate={{ rotate: 360 }}
+      transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+      className="absolute top-1/2 left-1/2 w-[200%] h-[200%] -translate-x-1/2 -translate-y-1/2 bg-[conic-gradient(from_0deg,transparent_0%,#fbbf24_25%,transparent_50%,#f85050_75%,transparent_100%)]"
+    />
+  </div>
 
-              <div className="relative rounded-[2.5rem] bg-[#0A0C10]/95 backdrop-blur-3xl p-10 border border-white/5 shadow-[0_0_50px_rgba(0,0,0,0.8)]">
-                <form onSubmit={handleSubmit} className="min-h-[320px] flex flex-col">
+             <div className="relative rounded-[2.5rem] bg-[#0A0C10]/95 backdrop-blur-3xl p-10 border border-white/5 shadow-[0_0_50px_rgba(0,0,0,0.8)] z-10">
+    <form onSubmit={handleSubmit} className="min-h-[320px] flex flex-col">
                   <AnimatePresence mode="wait">
                     {step === 1 && (
                       <motion.div
@@ -527,23 +527,8 @@ export default function RegisterPage() {
                         className="space-y-4 flex-1"
                       >
                         <h2 className="text-2xl font-[1000] text-white italic uppercase tracking-tighter mb-6">
-                          Tes identifiants
+                          Ton email
                         </h2>
-
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-black text-zinc-500 uppercase ml-1">Pseudo</label>
-                          <input
-                            type="text"
-                            value={username}
-                            onChange={(e) => {
-                              setUsername(e.target.value);
-                              setFieldErrors((p) => ({ ...p, username: "" }));
-                            }}
-                            placeholder="@pseudo_2030"
-                            className={`cyber-input neon-focus ${fieldHasError(fieldErrors, "username") ? "border-red-500/40" : ""}`}
-                          />
-                          <FieldError msg={fieldErrors.username} />
-                        </div>
 
                         <div className="space-y-2">
                           <label className="text-[10px] font-black text-zinc-500 uppercase ml-1">Email</label>
@@ -559,6 +544,15 @@ export default function RegisterPage() {
                           />
                           <FieldError msg={fieldErrors.email} />
                         </div>
+
+                        <NationaliteSelect
+                          value={nationalite}
+                          onChange={(value) => {
+                            setNationalite(value);
+                            setFieldErrors((p) => ({ ...p, nationalite: "" }));
+                          }}
+                          error={fieldErrors.nationalite}
+                        />
                       </motion.div>
                     )}
 
@@ -596,12 +590,11 @@ export default function RegisterPage() {
                             <button
                               type="button"
                               onClick={() => {
-                                setGender("M");
+                                setGender("Homme");
                                 setFieldErrors((p) => ({ ...p, gender: "" }));
                               }}
-                              // CHANGEMENT : border-amber-500 text-amber-400
                               className={`py-3 rounded-xl border text-[10px] font-bold uppercase transition-all duration-300 ${
-                                gender === "M"
+                                gender === "Homme"
                                   ? "border-amber-500 bg-amber-500/20 text-amber-400 shadow-[0_0_15px_rgba(251,191,36,0.3)]"
                                   : "border-white/5 bg-white/5 text-zinc-500 hover:border-white/10"
                               }`}
@@ -611,12 +604,11 @@ export default function RegisterPage() {
                             <button
                               type="button"
                               onClick={() => {
-                                setGender("F");
+                                setGender("Femme");
                                 setFieldErrors((p) => ({ ...p, gender: "" }));
                               }}
-                              // CHANGEMENT : border-amber-500 text-amber-400
                               className={`py-3 rounded-xl border text-[10px] font-bold uppercase transition-all duration-300 ${
-                                gender === "F"
+                                gender === "Femme"
                                   ? "border-amber-500 bg-amber-500/20 text-amber-400 shadow-[0_0_15px_rgba(251,191,36,0.3)]"
                                   : "border-white/5 bg-white/5 text-zinc-500 hover:border-white/10"
                               }`}
@@ -677,7 +669,6 @@ export default function RegisterPage() {
                               setAccepted(e.target.checked);
                               setFieldErrors((p) => ({ ...p, accepted: "" }));
                             }}
-                            // CHANGEMENT : accent-amber-500
                             className="mt-1 accent-amber-500"
                           />
                           <span className="text-[9px] text-zinc-500 font-bold uppercase leading-tight group-hover:text-zinc-300 transition-colors">
@@ -701,7 +692,6 @@ export default function RegisterPage() {
                         type="button"
                         onClick={nextStep}
                         disabled={!isStepValidNow(step)}
-                        // CHANGEMENT : bg-amber-500 hover:bg-amber-400
                         className="w-full bg-amber-500 hover:bg-amber-400 disabled:opacity-40 disabled:cursor-not-allowed py-4 rounded-2xl text-zinc-950 font-[1000] text-[10px] uppercase tracking-[0.2em] flex items-center justify-center gap-2 transition-all duration-300 hover:shadow-[0_0_25px_rgba(251,191,36,0.5)]"
                       >
                         Suivant <ArrowRight className="h-4 w-4" />
@@ -709,7 +699,6 @@ export default function RegisterPage() {
                     ) : (
                       <button
                         disabled={loading || !isStepValidNow(step)}
-                        // CHANGEMENT : bg-amber-500 hover:bg-amber-400
                         className="w-full bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed py-4 rounded-2xl text-zinc-950 font-[1000] text-[10px] uppercase tracking-[0.2em] transition-all duration-300 shadow-[0_10px_20px_-5px_rgba(251,191,36,0.4)] hover:shadow-[0_0_30px_rgba(251,191,36,0.6)]"
                       >
                         {loading ? "CRÉATION..." : "TERMINER L'INSCRIPTION"}
@@ -722,7 +711,6 @@ export default function RegisterPage() {
 
             <p className="text-center mt-6 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
               DÉJÀ UN COMPTE ?{" "}
-              {/* CHANGEMENT : hover:text-amber-400 */}
               <Link href="/signin" className="text-white hover:text-amber-400 transition-colors">
                 SE CONNECTER
               </Link>
@@ -749,7 +737,6 @@ export default function RegisterPage() {
           outline: none;
           transition: all 0.3s ease;
         }
-        /* CHANGEMENT : border-color rgba ambre */
         .neon-focus:focus {
           border-color: rgba(251, 191, 36, 0.4);
           background: rgba(251, 191, 36, 0.04);

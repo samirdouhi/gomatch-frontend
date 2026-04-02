@@ -2,7 +2,11 @@ const ACCESS_KEY = "gomatch_access_token";
 const REFRESH_KEY = "gomatch_refresh_token";
 const EXPIRES_KEY = "gomatch_expiresAtUtc";
 
-export function setAuthTokens(accessToken: string, expiresAtUtc: string, refreshToken?: string) {
+export function setAuthTokens(
+  accessToken: string,
+  expiresAtUtc: string,
+  refreshToken?: string
+) {
   localStorage.setItem(ACCESS_KEY, accessToken);
   localStorage.setItem(EXPIRES_KEY, expiresAtUtc);
 
@@ -10,16 +14,19 @@ export function setAuthTokens(accessToken: string, expiresAtUtc: string, refresh
     localStorage.setItem(REFRESH_KEY, refreshToken);
   }
 
-  // update UI same tab
   window.dispatchEvent(new Event("gomatch-auth-changed"));
 }
 
-export function getAccessToken() {
+export function getAccessToken(): string | null {
   return localStorage.getItem(ACCESS_KEY);
 }
 
-export function getRefreshToken() {
+export function getRefreshToken(): string | null {
   return localStorage.getItem(REFRESH_KEY);
+}
+
+export function getExpiresAtUtc(): string | null {
+  return localStorage.getItem(EXPIRES_KEY);
 }
 
 export function clearAuthTokens() {
@@ -27,6 +34,5 @@ export function clearAuthTokens() {
   localStorage.removeItem(REFRESH_KEY);
   localStorage.removeItem(EXPIRES_KEY);
 
-  // update UI same tab
   window.dispatchEvent(new Event("gomatch-auth-changed"));
 }

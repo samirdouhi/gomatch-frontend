@@ -55,20 +55,19 @@ function formatTime(ts: number) {
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-// ✅ Styles (hors render)
+// ✅ Changement des couleurs des boutons (Thème GoMatch Gold/Coral)
 const btnPrimary =
-  "inline-flex items-center justify-center gap-2 rounded-2xl bg-red-600 px-4 py-2 text-xs font-black text-white " +
-  "shadow-sm ring-1 ring-white/15 hover:bg-white hover:text-red-700 transition-all duration-200";
+  "inline-flex items-center justify-center gap-2 rounded-2xl bg-[#FACC15] px-4 py-2 text-xs font-black text-black " +
+  "shadow-sm ring-1 ring-white/15 hover:bg-white hover:text-black transition-all duration-200";
 
 const btnPrimaryLg =
-  "inline-flex items-center justify-center gap-2 rounded-2xl bg-red-600 px-4 py-3 text-sm font-black text-white " +
-  "shadow-sm ring-1 ring-white/15 hover:bg-white hover:text-red-700 transition-all duration-200";
+  "inline-flex items-center justify-center gap-2 rounded-2xl bg-[#FACC15] px-4 py-3 text-sm font-black text-black " +
+  "shadow-sm ring-1 ring-white/15 hover:bg-white hover:text-black transition-all duration-200";
 
 const btnSoft =
   "inline-flex items-center gap-2 rounded-2xl bg-white/10 px-4 py-2 text-xs font-black text-white " +
   "ring-1 ring-white/10 hover:bg-white hover:text-black transition-all duration-200";
 
-// ✅ Sidebar déclaré EN DEHORS du composant page
 function AssistantSidebar(props: {
   sessions: ChatSession[];
   filteredSessions: ChatSession[];
@@ -104,7 +103,7 @@ function AssistantSidebar(props: {
               <MessageSquare className="h-5 w-5 text-white/80" />
             </span>
             <div>
-              <div className="text-sm font-black text-white">Assistant GoMatch</div>
+              <div className="text-sm font-black text-white uppercase tracking-tight">Assistant GoMatch</div>
               <div className="text-xs text-white/60">Historique</div>
             </div>
           </div>
@@ -139,13 +138,13 @@ function AssistantSidebar(props: {
               className={[
                 "group rounded-2xl border p-3 cursor-pointer transition mb-2",
                 active
-                  ? "border-red-500/40 bg-red-500/10"
+                  ? "border-[#FACC15]/40 bg-[#FACC15]/10"
                   : "border-white/10 bg-white/5 hover:bg-white/10",
               ].join(" ")}
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <div className="text-sm font-black text-white truncate">{s.title}</div>
+                  <div className={`text-sm font-black truncate ${active ? "text-[#FACC15]" : "text-white"}`}>{s.title}</div>
                   <div className="mt-1 flex items-center gap-2 text-xs text-white/60">
                     <Clock className="h-3.5 w-3.5" />
                     {new Date(s.createdAt).toLocaleDateString()}
@@ -169,14 +168,14 @@ function AssistantSidebar(props: {
         })}
 
         <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
-          <div className="text-xs font-black uppercase text-white/70">Inspirations</div>
+          <div className="text-xs font-black uppercase text-white/70 tracking-widest">Inspirations</div>
           <div className="mt-2 grid gap-2">
             {quickPrompts.map((p) => (
               <button
                 key={p}
                 type="button"
                 onClick={() => setInput(p)}
-                className="text-left rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-xs font-bold text-white/80 hover:bg-white/10 transition"
+                className="text-left rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-xs font-bold text-white/80 hover:border-[#FACC15]/30 hover:bg-white/10 transition"
               >
                 {p}
               </button>
@@ -271,9 +270,7 @@ export default function AssistantPage() {
   function deleteChat(id: string) {
     setSessions((prev) => {
       const next = prev.filter((s) => s.id !== id);
-
       if (id === activeId) setActiveId(next[0]?.id ?? "");
-
       if (next.length === 0) {
         const fresh: ChatSession = {
           id: uid(),
@@ -292,7 +289,6 @@ export default function AssistantPage() {
         setActiveId(fresh.id);
         return [fresh];
       }
-
       return next;
     });
   }
@@ -344,18 +340,17 @@ export default function AssistantPage() {
 
   return (
     <main className="relative h-full min-h-0 overflow-hidden">
-      {/* Fond */}
+      {/* Fond Thème Sombre & Or */}
       <div className="absolute inset-0 -z-10">
         <div className="absolute inset-0 bg-[#0e0e10]" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(220,38,38,0.22),rgba(0,0,0,0)_55%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom,rgba(255,255,255,0.06),rgba(0,0,0,0)_60%)]" />
-        <div className="absolute inset-0 opacity-[0.08] [background-image:linear-gradient(to_right,rgba(255,255,255,0.12)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.12)_1px,transparent_1px)] [background-size:56px_56px]" />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/35 to-black/55" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(250,204,21,0.12),rgba(0,0,0,0)_55%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom,rgba(244,63,94,0.06),rgba(0,0,0,0)_60%)]" />
+        <div className="absolute inset-0 opacity-[0.05] [background-image:linear-gradient(to_right,rgba(255,255,255,0.1)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.1)_1px,transparent_1px)] [background-size:56px_56px]" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/40 to-black/60" />
       </div>
 
       <div className="h-full w-full flex">
-        {/* Sidebar desktop */}
-        <aside className="hidden lg:flex w-[320px] border-r border-white/10 bg-white/[0.05] backdrop-blur-xl">
+        <aside className="hidden lg:flex w-[320px] border-r border-white/10 bg-white/[0.02] backdrop-blur-2xl">
           <AssistantSidebar
             sessions={sessions}
             filteredSessions={filteredSessions}
@@ -371,18 +366,17 @@ export default function AssistantPage() {
           />
         </aside>
 
-        {/* Mobile drawer */}
         {mobileOpen && (
           <div className="lg:hidden fixed inset-0 z-50">
             <button
               type="button"
-              className="absolute inset-0 bg-black/70"
+              className="absolute inset-0 bg-black/80"
               onClick={() => setMobileOpen(false)}
               aria-label="Close overlay"
             />
-            <div className="absolute left-0 top-0 h-full w-[86%] max-w-[360px] border-r border-white/10 bg-black/55 backdrop-blur-xl">
+            <div className="absolute left-0 top-0 h-full w-[86%] max-w-[360px] border-r border-white/10 bg-black/90 backdrop-blur-xl">
               <div className="p-3 border-b border-white/10 flex items-center justify-between">
-                <div className="text-sm font-black text-white">Historique</div>
+                <div className="text-sm font-black text-white uppercase tracking-tight">Historique</div>
                 <button
                   type="button"
                   className="h-10 w-10 rounded-2xl border border-white/10 bg-white/5 flex items-center justify-center text-white/80 hover:bg-white/10"
@@ -410,10 +404,8 @@ export default function AssistantPage() {
           </div>
         )}
 
-        {/* Chat area */}
         <section className="flex-1 h-full min-h-0 flex flex-col">
-          {/* Top bar */}
-          <div className="px-4 sm:px-6 py-3 border-b border-white/10 bg-white/[0.04] backdrop-blur-xl flex items-center justify-between gap-3">
+          <div className="px-4 sm:px-6 py-3 border-b border-white/10 bg-white/[0.02] backdrop-blur-xl flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               <button
                 type="button"
@@ -424,16 +416,16 @@ export default function AssistantPage() {
                 <Menu className="h-5 w-5" />
               </button>
 
-              <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-red-600 text-white shadow ring-1 ring-white/15">
-                <Sparkles className="h-5 w-5" />
+              <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#FACC15] text-black shadow ring-1 ring-white/15">
+                <Sparkles className="h-5 w-5 fill-current" />
               </span>
 
               <div className="min-w-0">
-                <div className="text-sm font-black text-white truncate">
+                <div className="text-sm font-black text-white truncate uppercase tracking-tight">
                   {activeSession?.title ?? "Assistant GoMatch"}
                 </div>
-                <div className="text-xs text-white/60">
-                  Plans locaux • Food • Culture • Shopping • Match
+                <div className="text-xs text-white/50 font-bold uppercase tracking-tighter">
+                  Plans locaux • Food • Culture • Match
                 </div>
               </div>
             </div>
@@ -444,11 +436,6 @@ export default function AssistantPage() {
                 Nouveau
               </button>
 
-              <button type="button" onClick={clearActiveChat} className={"hidden sm:inline-flex " + btnSoft}>
-                <Trash2 className="h-4 w-4" />
-                Effacer
-              </button>
-
               <Link href="/map" className={btnPrimary}>
                 <MapPin className="h-4 w-4" />
                 Carte
@@ -456,7 +443,6 @@ export default function AssistantPage() {
             </div>
           </div>
 
-          {/* Messages */}
           <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-6">
             <div className="mx-auto w-full max-w-3xl space-y-3">
               {activeSession?.messages?.length ? (
@@ -467,14 +453,14 @@ export default function AssistantPage() {
                       <div key={m.id} className={["flex", isUser ? "justify-end" : "justify-start"].join(" ")}>
                         <div
                           className={[
-                            "max-w-[92%] rounded-3xl px-4 py-3 text-sm leading-relaxed",
+                            "max-w-[92%] rounded-3xl px-5 py-3 text-sm leading-relaxed",
                             isUser
-                              ? "bg-red-600 text-white shadow-sm ring-1 ring-white/15"
-                              : "bg-white/[0.07] border border-white/10 text-white/90 backdrop-blur-md",
+                              ? "bg-[#F43F5E] text-white shadow-sm font-semibold"
+                              : "bg-white/[0.05] border border-white/10 text-white/90 backdrop-blur-md",
                           ].join(" ")}
                         >
                           <div className="whitespace-pre-line">{m.content}</div>
-                          <div className={["mt-2 text-[11px]", isUser ? "text-white/80" : "text-white/55"].join(" ")}>
+                          <div className={["mt-2 text-[11px] font-bold uppercase opacity-50", isUser ? "text-white" : "text-white/70"].join(" ")}>
                             {formatTime(m.ts)}
                           </div>
                         </div>
@@ -484,12 +470,12 @@ export default function AssistantPage() {
 
                   {isTyping && (
                     <div className="flex justify-start">
-                      <div className="rounded-3xl border border-white/10 bg-white/[0.07] px-4 py-3 text-sm text-white/80 backdrop-blur-md">
+                      <div className="rounded-3xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-white/80 backdrop-blur-md">
                         <span className="inline-flex items-center gap-2">
                           <span className="h-2 w-2 rounded-full bg-white/70 animate-bounce" />
-                          <span className="h-2 w-2 rounded-full bg-red-500 animate-bounce [animation-delay:120ms]" />
+                          <span className="h-2 w-2 rounded-full bg-[#FACC15] animate-bounce [animation-delay:120ms]" />
                           <span className="h-2 w-2 rounded-full bg-white/70 animate-bounce [animation-delay:240ms]" />
-                          <span className="ml-2 text-xs font-bold">Je réfléchis…</span>
+                          <span className="ml-2 text-xs font-black uppercase tracking-widest text-white/40">Recherche...</span>
                         </span>
                       </div>
                     </div>
@@ -498,37 +484,36 @@ export default function AssistantPage() {
                   <div ref={messagesEndRef} />
                 </>
               ) : (
-                <div className="rounded-3xl border border-white/10 bg-white/[0.07] p-6 text-white/80 backdrop-blur-md">
-                  <div className="text-sm font-black">Aucun message</div>
-                  <div className="mt-2 text-sm text-white/60">
-                    Utilise une inspiration ou décris ton besoin : ville, timing, budget, goûts.
+                <div className="rounded-3xl border border-white/10 bg-white/[0.05] p-6 text-white/80 backdrop-blur-md text-center">
+                  <div className="text-sm font-black uppercase tracking-widest">Aucun message</div>
+                  <div className="mt-2 text-sm text-white/40">
+                    Commencez une exploration locale.
                   </div>
                 </div>
               )}
             </div>
           </div>
 
-          {/* Composer */}
-          <div className="shrink-0 border-t border-white/10 bg-white/[0.04] backdrop-blur-xl">
+          <div className="shrink-0 border-t border-white/10 bg-white/[0.02] backdrop-blur-xl">
             <div className="px-4 sm:px-6 py-4">
               <div className="mx-auto w-full max-w-3xl">
                 <div className="mb-2 flex flex-wrap gap-2">
-                  <span className="inline-flex items-center gap-1 rounded-full bg-white/5 border border-white/10 px-3 py-1 text-[11px] font-black text-white/75">
-                    <Star className="h-3.5 w-3.5 text-white/80" />
+                  <span className="inline-flex items-center gap-1 rounded-full bg-white/5 border border-white/10 px-3 py-1 text-[10px] font-black text-white/50 uppercase tracking-widest">
+                    <Star className="h-3 w-3 text-[#FACC15] fill-current" />
                     Authentique
                   </span>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-white/5 border border-white/10 px-3 py-1 text-[11px] font-black text-white/75">
-                    <Compass className="h-3.5 w-3.5 text-white/80" />
+                  <span className="inline-flex items-center gap-1 rounded-full bg-white/5 border border-white/10 px-3 py-1 text-[10px] font-black text-white/50 uppercase tracking-widest">
+                    <Compass className="h-3 w-3 text-[#FACC15]" />
                     Proche
                   </span>
                 </div>
 
-                <div className="flex items-end gap-3 rounded-3xl border border-white/10 bg-white/[0.06] px-4 py-3 backdrop-blur-md">
+                <div className="flex items-end gap-3 rounded-3xl border border-white/10 bg-white/[0.04] px-4 py-3 backdrop-blur-md focus-within:border-[#FACC15]/30 transition-all">
                   <textarea
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    placeholder="Ex : 2h avant match à Rabat, budget 120 MAD, distance 2 km…"
-                    className="w-full resize-none bg-transparent text-sm font-semibold text-white placeholder:text-white/35 outline-none"
+                    placeholder="Ex : 2h avant match à Rabat, budget 120 MAD..."
+                    className="w-full resize-none bg-transparent text-sm font-semibold text-white placeholder:text-white/20 outline-none"
                     rows={2}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && !e.shiftKey) {
@@ -544,8 +529,8 @@ export default function AssistantPage() {
                   </button>
                 </div>
 
-                <div className="mt-2 text-xs text-white/50">
-                  Astuce : ajoute <b>ville</b>, <b>budget</b>, <b>distance max</b>, et tes préférences.
+                <div className="mt-2 text-[10px] text-white/30 text-center font-bold uppercase tracking-widest">
+                  GOMATCH AI peut générer des erreurs.
                 </div>
               </div>
             </div>
@@ -555,10 +540,3 @@ export default function AssistantPage() {
     </main>
   );
 }
-
-
-
-
-
-
-

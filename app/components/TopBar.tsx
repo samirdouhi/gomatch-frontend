@@ -22,7 +22,7 @@ const NAV_ITEMS = [
   { label: "Accueil", href: "/", icon: Home },
   { label: "Matchs", href: "/events", icon: Calendar },
   { label: "Culture", href: "/culture", icon: Landmark },
-  { label: "Carte", href: "/map", icon: CarteIcon },
+  { label: "Carte", href: "/carte", icon: CarteIcon },
 ];
 
 export function TopBar({ sidebarCollapsed, onToggleSidebar }: TopBarProps) {

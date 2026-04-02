@@ -1,15 +1,41 @@
 // src/lib/profile/profile.routing.ts
+import { authFetch } from "../authApi";
 
-import { getMockProfile } from "@/lib/profileMock";
+type ProfileRouteResponse = {
+  inscriptionTerminee?: boolean;
+  InscriptionTerminee?: boolean;
+  firstLoginOnboardingDone?: boolean;
+  onboardingCompleted?: boolean;
+};
 
-export function getFirstRoute(params?: { registered?: boolean }) {
-  const profile = getMockProfile();
+export async function getFirstRoute(params?: { registered?: boolean }) {
   const registered = !!params?.registered;
 
-  // ✅ onboarding seulement si c'est un "nouveau" et pas encore fait
-  if (registered && !profile.firstLoginOnboardingDone) {
-    return "/onboarding";
-  }
+  try {
+    const res = await authFetch("/profile/me", {
+      method: "GET",
+      cache: "no-store",
+    });
 
-  return "/dashboard";
+    if (!res.ok) {
+      return registered ? "/onboarding" : "/dashboard";
+    }
+
+    const profile = (await res.json()) as ProfileRouteResponse;
+
+    const onboardingDone =
+      profile.inscriptionTerminee ??
+      profile.InscriptionTerminee ??
+      profile.firstLoginOnboardingDone ??
+      profile.onboardingCompleted ??
+      false;
+
+    if (!onboardingDone) {
+      return "/onboarding";
+    }
+
+    return "/dashboard";
+  } catch {
+    return registered ? "/onboarding" : "/dashboard";
+  }
 }

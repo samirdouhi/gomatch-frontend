@@ -24,25 +24,35 @@ function ThemeOption({
     <button
       type="button"
       onClick={() => onSelect(value)}
-      className={`
-        relative flex items-center justify-between w-full rounded-2xl border p-5 transition-all duration-300
-        ${active 
-          ? "border-amber-500 bg-amber-500/10 shadow-[0_0_20px_rgba(245,158,11,0.15)]" 
-          : "border-white/5 bg-white/5 hover:bg-white/10 hover:border-white/20"}
-      `}
+      className={[
+        "relative flex w-full items-center justify-between rounded-2xl border p-5 transition-all duration-300",
+        active
+          ? "border-amber-500 bg-amber-500/10 shadow-[0_0_20px_rgba(245,158,11,0.15)]"
+          : "border-slate-200 bg-white/70 hover:border-slate-300 hover:bg-white dark:border-white/5 dark:bg-white/5 dark:hover:border-white/20 dark:hover:bg-white/10",
+      ].join(" ")}
     >
       <div className="flex items-center gap-4">
-        <div className={`
-          flex h-12 w-12 items-center justify-center rounded-xl transition-colors
-          ${active ? "bg-amber-500 text-black shadow-[0_0_15px_rgba(245,158,11,0.5)]" : "bg-white/5 text-zinc-400"}
-        `}>
+        <div
+          className={[
+            "flex h-12 w-12 items-center justify-center rounded-xl transition-colors",
+            active
+              ? "bg-amber-500 text-black shadow-[0_0_15px_rgba(245,158,11,0.5)]"
+              : "bg-slate-100 text-slate-600 dark:bg-white/5 dark:text-zinc-400",
+          ].join(" ")}
+        >
           {icon}
         </div>
-        <div>
-          <span className={`block font-bold tracking-tight ${active ? "text-white" : "text-zinc-400"}`}>
+
+        <div className="text-left">
+          <span
+            className={[
+              "block font-bold tracking-tight",
+              active ? "text-slate-900 dark:text-white" : "text-slate-700 dark:text-zinc-400",
+            ].join(" ")}
+          >
             {label}
           </span>
-          <span className="text-[10px] uppercase tracking-widest opacity-50 font-medium">
+          <span className="text-[10px] font-medium uppercase tracking-widest text-slate-400 dark:opacity-50 dark:text-zinc-400">
             Interface 2030
           </span>
         </div>
@@ -72,34 +82,46 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-full px-6 py-12 lg:py-20">
-      <div className="max-w-2xl mx-auto">
+      <div className="mx-auto max-w-2xl">
         <header className="mb-12">
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
-            className="flex items-center gap-2 text-amber-500 mb-2"
+            className="mb-2 flex items-center gap-2 text-amber-500"
           >
-            <div className="h-1 w-8 bg-amber-500 rounded-full" />
-            <span className="text-[10px] font-black uppercase tracking-[0.3em]">Configuration</span>
+            <div className="h-1 w-8 rounded-full bg-amber-500" />
+            <span className="text-[10px] font-black uppercase tracking-[0.3em]">
+              Configuration
+            </span>
           </motion.div>
-          <h1 className="text-4xl font-black text-white tracking-tighter sm:text-5xl">
-            Paramètres <span className="text-amber-500 italic">Système</span>
+
+          <h1 className="text-4xl font-black tracking-tighter text-slate-900 dark:text-white sm:text-5xl">
+            Paramètres <span className="italic text-amber-500">Système</span>
           </h1>
         </header>
 
         <section className="space-y-8">
-          <div className="flex items-end justify-between border-b border-white/5 pb-4">
+          <div className="flex items-end justify-between border-b border-slate-200 pb-4 dark:border-white/5">
             <div>
-              <h2 className="text-xl font-bold text-white">Apparence</h2>
-              <p className="text-sm text-zinc-500">Personnalisez votre expérience visuelle.</p>
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                Apparence
+              </h2>
+              <p className="text-sm text-slate-500 dark:text-zinc-500">
+                Personnalisez votre expérience visuelle.
+              </p>
             </div>
+
             <div className="text-right">
-              <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest block">Actuel</span>
-              <span className="text-sm font-black text-amber-500 uppercase italic">{current}</span>
+              <span className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-600">
+                Actuel
+              </span>
+              <span className="text-sm font-black uppercase italic text-amber-500">
+                {current}
+              </span>
             </div>
           </div>
 
-          <motion.div 
+          <motion.div
             className="grid gap-4"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -131,9 +153,8 @@ export default function SettingsPage() {
           </motion.div>
         </section>
 
-        {/* Note de bas de page style futuriste */}
-        <footer className="mt-16 pt-8 border-t border-white/5 opacity-30">
-          <p className="text-[10px] font-medium tracking-[0.2em] text-center text-zinc-400">
+        <footer className="mt-16 border-t border-slate-200 pt-8 opacity-50 dark:border-white/5 dark:opacity-30">
+          <p className="text-center text-[10px] font-medium tracking-[0.2em] text-slate-500 dark:text-zinc-400">
             GOMATCH ENGINE V.2.0.30 — RABAT / CASABLANCA
           </p>
         </footer>

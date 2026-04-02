@@ -211,7 +211,8 @@ export default function SignInPage() {
         router.replace("/onboarding");
         return;
       }
-      router.replace(getFirstRoute({ registered: false }));
+     const route = await getFirstRoute({ registered: false });
+router.replace(route);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Erreur inconnue");
     } finally {

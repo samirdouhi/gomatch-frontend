@@ -1,9 +1,17 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import Cropper, { Area, Point } from "react-easy-crop";
+import * as Flags from "country-flag-icons/react/3x2";
 import {
   Store,
   Sparkles,
@@ -14,60 +22,80 @@ import {
   Landmark,
   MapPin,
   Heart,
-  History,
   Leaf,
-  Music,
   Ticket,
   Camera,
-  FileText,
-  Globe,
-  Phone,
   X,
   ChevronRight,
+  Search,
 } from "lucide-react";
-import { getMockProfile, setMockProfile } from "@/lib/profileMock";
+import { authFetch } from "@/lib/authApi";
+import {
+  WORLD_CUP_2026_TEAMS,
+  type CountryCode,
+} from "@/lib/world-cup-2026";
 
-// --- Types ---
 type Goal = "experience" | "business";
-type StepNumber = 0 | 1 | 2;
+type StepNumber = 0 | 1 | 2 | 3 | 4;
+type AnyObj = Record<string, unknown>;
+type Language = "FR" | "EN" | "AR";
 
-// --- Données ---
+type ProfileState = {
+  langue: Language;
+  phone: string;
+  photoUrl: string;
+  photoFile: File | null;
+};
+
+const PROFILE_API = "/profile";
+
 const GOALS = [
   {
     id: "experience" as Goal,
     title: "Vivre l’expérience",
     desc: "Matchs, bons plans et lieux secrets — une expérience 2030 sur mesure.",
     Icon: Sparkles,
-    image: "/goal-experience.png", // Assure-toi que cette image existe
+    image: "/goal-experience.png",
     badge: "Supporter / Voyage",
-    color: "from-red-600/10", // Moins opaque
+    color: "from-yellow-500/10",
   },
   {
     id: "business" as Goal,
     title: "J’ai un commerce",
-    desc: "Attirez des clients, gagnez en visibilité et boostez votre activité pendant l'événement.",
+    desc: "Prépare ton profil maintenant, puis complète ton espace commerçant dans l’étape suivante.",
     Icon: Store,
-    image: "/goal-business.png", // Assure-toi que cette image existe
+    image: "/goal-business.png",
     badge: "Professionnel",
-    color: "from-emerald-600/10", // Moins opaque
+    color: "from-orange-500/10",
   },
 ];
 
 const INTERESTS = [
-  { id: "Gastronomie", label: "Gastronomie", Icon: Utensils, hint: "Adresses & spécialités" },
-  { id: "Artisanat", label: "Artisanat", Icon: ShoppingBag, hint: "Souks & savoir-faire" },
-  { id: "Culture", label: "Culture locale", Icon: Landmark, hint: "Musées & traditions" },
-  { id: "Architecture", label: "Architecture", Icon: Landmark, hint: "Villes & monuments" },
-  { id: "Marchés", label: "Marchés", Icon: MapPin, hint: "Marchés & spots" },
+  { id: "Gastronomie", label: "Gastronomie", Icon: Utensils, hint: "Restaurants & spécialités" },
+  { id: "Artisanat", label: "Artisanat", Icon: ShoppingBag, hint: "Produits locaux" },
+  { id: "Culture", label: "Culture", Icon: Landmark, hint: "Musées & traditions" },
+  { id: "Architecture", label: "Architecture", Icon: Landmark, hint: "Monuments" },
+  { id: "Marchés", label: "Marchés", Icon: MapPin, hint: "Souks & marchés" },
   { id: "Cafés", label: "Cafés", Icon: Heart, hint: "Ambiance locale" },
   { id: "Football", label: "Football", Icon: Ticket, hint: "Matchs & fan zones" },
   { id: "Nature", label: "Nature", Icon: Leaf, hint: "Paysages & randos" },
+  { id: "Shopping", label: "Shopping", Icon: ShoppingBag, hint: "Boutiques locales" },
+  { id: "Nightlife", label: "Nightlife", Icon: Heart, hint: "Sorties & ambiance" },
+  { id: "Events", label: "Événements", Icon: Ticket, hint: "Festivals & activités" },
+  { id: "StreetFood", label: "Street Food", Icon: Utensils, hint: "Cuisine rapide locale" },
+
+  
 ];
 
-const SETUP_CARDS = [
-  { step: "photo", title: "Photo de profil", desc: "Un profil avec photo inspire 3x plus confiance aux autres membres.", Icon: Camera, cta: "Ajouter ma photo" },
-  { step: "bio", title: "Ta biographie", desc: "Dis-nous en plus sur toi en quelques mots pour personnaliser tes matchs.", Icon: FileText, cta: "Rédiger ma bio" },
-  { step: "country", title: "Ton pays", desc: "Pour adapter les suggestions et les langues à ta culture.", Icon: Globe, cta: "Sélectionner" },
+const LANGUAGE_OPTIONS: Array<{
+  value: Language;
+  label: string;
+  flag: string;
+  hint: string;
+}> = [
+  { value: "FR", label: "Français", flag: "🇫🇷", hint: "Interface et recommandations en français" },
+  { value: "EN", label: "Anglais", flag: "🇬🇧", hint: "English experience for international visitors" },
+  { value: "AR", label: "Arabe", flag: "🇲🇦", hint: "واجهة وتجربة باللغة العربية" },
 ];
 
 const pageVariants = {
@@ -76,105 +104,627 @@ const pageVariants = {
   exit: { opacity: 0, x: -20 },
 };
 
+function pickArray(obj: AnyObj, keys: string[]): string[] {
+  for (const key of keys) {
+    const value = obj[key];
+    if (Array.isArray(value)) {
+      return value.filter((x): x is string => typeof x === "string");
+    }
+  }
+  return [];
+}
+
+function pickBoolean(obj: AnyObj, keys: string[]): boolean | null {
+  for (const key of keys) {
+    const value = obj[key];
+    if (typeof value === "boolean") return value;
+  }
+  return null;
+}
+
+function pickString(obj: AnyObj, keys: string[]): string {
+  for (const key of keys) {
+    const value = obj[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return "";
+}
+
+async function tryReadErrorMessage(res: Response): Promise<string | null> {
+  try {
+    const payload = await res.json();
+    if (payload && typeof payload === "object") {
+      const obj = payload as AnyObj;
+      if (typeof obj.message === "string" && obj.message.trim()) return obj.message.trim();
+      if (typeof obj.error === "string" && obj.error.trim()) return obj.error.trim();
+      if (typeof obj.title === "string" && obj.title.trim()) return obj.title.trim();
+      if (typeof obj.detail === "string" && obj.detail.trim()) return obj.detail.trim();
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function createImage(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new window.Image();
+    image.addEventListener("load", () => resolve(image));
+    image.addEventListener("error", (error) => reject(error));
+    image.setAttribute("crossOrigin", "anonymous");
+    image.src = url;
+  });
+}
+
+async function getCroppedImg(imageSrc: string, pixelCrop: Area): Promise<Blob> {
+  const image = await createImage(imageSrc);
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+
+  if (!ctx) {
+    throw new Error("Canvas non disponible");
+  }
+
+  canvas.width = pixelCrop.width;
+  canvas.height = pixelCrop.height;
+
+  ctx.drawImage(
+    image,
+    pixelCrop.x,
+    pixelCrop.y,
+    pixelCrop.width,
+    pixelCrop.height,
+    0,
+    0,
+    pixelCrop.width,
+    pixelCrop.height
+  );
+
+  return await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error("Impossible de créer l'image recadrée"));
+        return;
+      }
+      resolve(blob);
+    }, "image/jpeg", 0.95);
+  });
+}
+
 export default function OnboardingPage() {
   const router = useRouter();
   const reducedMotion = useReducedMotion();
-  const initialProfile = useMemo(() => getMockProfile(), []);
-  
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
+  const activeBlobUrlRef = useRef<string | null>(null);
+
   const [step, setStep] = useState<StepNumber>(0);
-  const [goal, setGoal] = useState<Goal | null>(() => (initialProfile.goal as Goal | null));
-  const [interests, setInterests] = useState<string[]>(() => initialProfile.interests || []);
-  const [setupIndex, setSetupIndex] = useState(0);
+  const [goal, setGoal] = useState<Goal | null>(null);
+  const [interests, setInterests] = useState<string[]>([]);
+  const [teams, setTeams] = useState<string[]>([]);
+  const [teamQuery, setTeamQuery] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [loadingProfile, setLoadingProfile] = useState(true);
+  const [submitError, setSubmitError] = useState("");
+  const [profileState, setProfileState] = useState<ProfileState>({
+    langue: "FR",
+    phone: "",
+    photoUrl: "",
+    photoFile: null,
+  });
+
+  const [cropModalOpen, setCropModalOpen] = useState(false);
+  const [rawPhotoSrc, setRawPhotoSrc] = useState("");
+  const [crop, setCrop] = useState<Point>({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
 
   useEffect(() => {
     document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = "unset"; };
+    return () => {
+      document.body.style.overflow = "unset";
+      if (activeBlobUrlRef.current?.startsWith("blob:")) {
+        URL.revokeObjectURL(activeBlobUrlRef.current);
+        activeBlobUrlRef.current = null;
+      }
+    };
   }, []);
 
-  const finish = () => {
-    setMockProfile({ goal, interests, firstLoginOnboardingDone: true });
-    router.replace("/dashboard");
+  const replaceBlobUrl = useCallback((nextUrl: string) => {
+    if (
+      activeBlobUrlRef.current &&
+      activeBlobUrlRef.current.startsWith("blob:") &&
+      activeBlobUrlRef.current !== nextUrl
+    ) {
+      URL.revokeObjectURL(activeBlobUrlRef.current);
+    }
+
+    activeBlobUrlRef.current = nextUrl.startsWith("blob:") ? nextUrl : null;
+  }, []);
+
+  const loadProtectedPhoto = useCallback(async (url: string): Promise<string> => {
+    const res = await authFetch(url, {
+      method: "GET",
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      throw new Error(`Impossible de charger la photo. (HTTP ${res.status})`);
+    }
+
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    replaceBlobUrl(blobUrl);
+    return blobUrl;
+  }, [replaceBlobUrl]);
+
+  const loadProfile = useCallback(async () => {
+    try {
+      const res = await authFetch(`${PROFILE_API}/me`, {
+        method: "GET",
+        cache: "no-store",
+      });
+
+      if (res.status === 401) {
+        setSubmitError("Session expirée. Merci de vous reconnecter.");
+        router.replace("/signin");
+        return;
+      }
+
+      if (!res.ok) {
+        const message = await tryReadErrorMessage(res);
+        setSubmitError(message ?? `Impossible de charger le profil. (HTTP ${res.status})`);
+        return;
+      }
+
+      const data = (await res.json()) as AnyObj;
+
+      const existingPreferences = pickArray(data, [
+        "preferences",
+        "Preferences",
+        "interests",
+        "Interests",
+      ]);
+
+      const existingTeams = pickArray(data, [
+        "equipesSuivies",
+        "EquipesSuivies",
+        "teams",
+        "Teams",
+        "followedTeams",
+        "FollowedTeams",
+      ]);
+
+      const onboardingDone = pickBoolean(data, [
+        "inscriptionTerminee",
+        "InscriptionTerminee",
+        "onboardingCompleted",
+        "OnboardingCompleted",
+      ]);
+
+      const langue = pickString(data, ["langue", "Langue"]);
+      const phone = pickString(data, ["phone", "Phone", "telephone", "Telephone"]);
+      const photoUrlFromApi = pickString(data, ["photoUrl", "PhotoUrl", "photo", "Photo"]);
+
+      let resolvedPhotoUrl = "";
+
+      if (photoUrlFromApi) {
+        try {
+          resolvedPhotoUrl = await loadProtectedPhoto(photoUrlFromApi);
+        } catch {
+          resolvedPhotoUrl = "";
+          replaceBlobUrl("");
+        }
+      } else {
+        replaceBlobUrl("");
+      }
+
+      if (existingPreferences.length > 0) setInterests(existingPreferences);
+      if (existingTeams.length > 0) setTeams(existingTeams);
+
+      setProfileState({
+        langue: langue === "EN" || langue === "AR" ? langue : "FR",
+        phone,
+        photoUrl: resolvedPhotoUrl,
+        photoFile: null,
+      });
+
+      if (onboardingDone === true) {
+        router.replace("/dashboard");
+      }
+    } catch {
+      setSubmitError("Erreur réseau : impossible de charger le profil.");
+    } finally {
+      setLoadingProfile(false);
+    }
+  }, [loadProtectedPhoto, replaceBlobUrl, router]);
+
+  useEffect(() => {
+    void loadProfile();
+  }, [loadProfile]);
+
+  const filteredTeams = useMemo(() => {
+    const q = teamQuery.trim().toLowerCase();
+    if (!q) return WORLD_CUP_2026_TEAMS;
+
+    return WORLD_CUP_2026_TEAMS.filter(
+      (team) =>
+        team.label.toLowerCase().includes(q) ||
+        team.id.toLowerCase().includes(q) ||
+        team.code.toLowerCase().includes(q) ||
+        team.aliases?.some((alias) => alias.toLowerCase().includes(q))
+    );
+  }, [teamQuery]);
+
+  const canGoToPhoto = Boolean(profileState.langue);
+  const canGoToTeams = interests.length >= 3;
+  const canFinish = teams.length >= 1 && Boolean(profileState.langue) && goal !== null;
+
+  const savePhoto = async (): Promise<{ ok: boolean; message?: string }> => {
+    if (!profileState.photoFile) {
+      return { ok: true };
+    }
+
+    const formData = new FormData();
+    formData.append("photo", profileState.photoFile);
+
+    const res = await authFetch(`${PROFILE_API}/me/photo`, {
+      method: "POST",
+      body: formData,
+    });
+
+    if (res.status === 401) {
+      return {
+        ok: false,
+        message: "Session expirée. Merci de vous reconnecter.",
+      };
+    }
+
+    if (!res.ok) {
+      const message = await tryReadErrorMessage(res);
+      return {
+        ok: false,
+        message: message ?? `Erreur upload photo (HTTP ${res.status})`,
+      };
+    }
+
+    try {
+      const data = (await res.json()) as AnyObj;
+      const uploadedPhotoUrl = pickString(data, ["photoUrl", "PhotoUrl"]);
+
+      let resolvedPhotoUrl = profileState.photoUrl;
+
+      if (uploadedPhotoUrl) {
+        try {
+          resolvedPhotoUrl = await loadProtectedPhoto(uploadedPhotoUrl);
+        } catch {
+          resolvedPhotoUrl = profileState.photoUrl;
+        }
+      }
+
+      setProfileState((prev) => ({
+        ...prev,
+        photoUrl: resolvedPhotoUrl,
+        photoFile: null,
+      }));
+    } catch {
+      setProfileState((prev) => ({
+        ...prev,
+        photoFile: null,
+      }));
+    }
+
+    return { ok: true };
   };
 
-  const nextSetup = () => {
-    if (setupIndex < SETUP_CARDS.length - 1) {
-      setSetupIndex(prev => prev + 1);
-    } else {
-      finish();
+  const savePreferences = async () => {
+    const body = {
+      preferences: interests,
+      equipesSuivies: teams,
+      langue: profileState.langue,
+    };
+
+    return authFetch(`${PROFILE_API}/me/preferences`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+  };
+
+  const completeOnboarding = async () => {
+    const body = {
+      preferences: interests,
+      equipesSuivies: teams,
+      langue: profileState.langue,
+    };
+
+    return authFetch(`${PROFILE_API}/me/onboarding`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+  };
+
+  const finish = async () => {
+    setSubmitError("");
+
+    if (!goal) {
+      setStep(0);
+      setSubmitError("Choisis un objectif pour continuer.");
+      return;
+    }
+
+    if (!profileState.langue.trim()) {
+      setStep(1);
+      setSubmitError("Choisis une langue.");
+      return;
+    }
+
+    if (interests.length < 3) {
+      setStep(3);
+      setSubmitError("Choisis au moins 3 centres d'intérêt.");
+      return;
+    }
+
+    if (teams.length < 1) {
+      setStep(4);
+      setSubmitError("Choisis au moins un pays suivi.");
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const photoResult = await savePhoto();
+
+      if (!photoResult.ok) {
+        setSubmitError(photoResult.message ?? "Impossible d'enregistrer la photo du profil.");
+        if (photoResult.message?.includes("Session expirée")) {
+          router.replace("/signin");
+        }
+        return;
+      }
+
+      const prefRes = await savePreferences();
+
+      if (prefRes.status === 401) {
+        setSubmitError("Session expirée. Merci de vous reconnecter.");
+        router.replace("/signin");
+        return;
+      }
+
+      if (!prefRes.ok) {
+        const message = await tryReadErrorMessage(prefRes);
+        setSubmitError(
+          message ?? `Impossible d'enregistrer les préférences. (HTTP ${prefRes.status})`
+        );
+        return;
+      }
+
+      const onboardingRes = await completeOnboarding();
+
+      if (onboardingRes.status === 401) {
+        setSubmitError("Session expirée. Merci de vous reconnecter.");
+        router.replace("/signin");
+        return;
+      }
+
+      if (!onboardingRes.ok) {
+        const message = await tryReadErrorMessage(onboardingRes);
+        setSubmitError(
+          message ?? `Impossible de finaliser l'onboarding. (HTTP ${onboardingRes.status})`
+        );
+        return;
+      }
+
+      if (goal === "business") {
+        router.replace("/merchant/onboarding");
+        return;
+      }
+
+      router.replace("/dashboard");
+    } catch {
+      setSubmitError("Erreur réseau : impossible de contacter le serveur.");
+    } finally {
+      setSaving(false);
     }
   };
 
+  const handlePhotoPick = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      if (!result) return;
+
+      setRawPhotoSrc(result);
+      setCrop({ x: 0, y: 0 });
+      setZoom(1);
+      setCroppedAreaPixels(null);
+      setCropModalOpen(true);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const onCropComplete = useCallback((_croppedArea: Area, croppedPixels: Area) => {
+    setCroppedAreaPixels(croppedPixels);
+  }, []);
+
+  const confirmCrop = async () => {
+    if (!rawPhotoSrc || !croppedAreaPixels) return;
+
+    try {
+      const croppedBlob = await getCroppedImg(rawPhotoSrc, croppedAreaPixels);
+      const croppedFile = new File([croppedBlob], "profile-photo.jpg", {
+        type: "image/jpeg",
+      });
+
+      const objectUrl = URL.createObjectURL(croppedFile);
+      replaceBlobUrl(objectUrl);
+
+      setProfileState((prev) => ({
+        ...prev,
+        photoUrl: objectUrl,
+        photoFile: croppedFile,
+      }));
+
+      setCropModalOpen(false);
+      setRawPhotoSrc("");
+    } catch {
+      setSubmitError("Impossible de recadrer la photo.");
+    }
+  };
+
+  const goToNextFromGoal = () => {
+    if (!goal) {
+      setSubmitError("Choisis un objectif pour continuer.");
+      return;
+    }
+    setSubmitError("");
+    setStep(1);
+  };
+
+  const skipLanguageStep = () => {
+    setProfileState((prev) => ({ ...prev, langue: prev.langue || "FR" }));
+    setSubmitError("");
+    setStep(2);
+  };
+
+  const skipPhotoStep = () => {
+    setSubmitError("");
+    setStep(3);
+  };
+
+  if (loadingProfile) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#030409] text-slate-50">
+        Chargement...
+      </div>
+    );
+  }
+
   return (
-    <div className="relative h-[100dvh] w-full overflow-hidden bg-[#030409] text-slate-50 selection:bg-emerald-500/30">
-      
-      {/* --- BACKGROUND --- */}
+    <div className="relative h-[100dvh] w-full overflow-hidden bg-[#030409] text-slate-50 selection:bg-yellow-500/30">
       <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
         <div className="absolute inset-0 opacity-[0.03] bg-[url('https://grainy-gradients.vercel.app/noise.svg')] brightness-100 contrast-150" />
         <motion.div
-          animate={reducedMotion ? {} : { scale: [1, 1.2, 1], x: [0, 30, 0], opacity: [0.15, 0.25, 0.15] }}
+          animate={
+            reducedMotion
+              ? {}
+              : { scale: [1, 1.2, 1], x: [0, 30, 0], opacity: [0.15, 0.25, 0.15] }
+          }
           transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute -top-[10%] -left-[10%] h-[70%] w-[70%] rounded-full bg-red-600 blur-[120px]"
+          className="absolute -top-[10%] -left-[10%] h-[70%] w-[70%] rounded-full bg-yellow-500 blur-[120px]"
         />
         <motion.div
-          animate={reducedMotion ? {} : { scale: [1, 1.3, 1], x: [0, -40, 0], opacity: [0.1, 0.2, 0.1] }}
+          animate={
+            reducedMotion
+              ? {}
+              : { scale: [1, 1.3, 1], x: [0, -40, 0], opacity: [0.1, 0.2, 0.1] }
+          }
           transition={{ duration: 15, repeat: Infinity, ease: "easeInOut", delay: 1 }}
-          className="absolute top-[20%] -right-[10%] h-[60%] w-[60%] rounded-full bg-emerald-500 blur-[130px]"
+          className="absolute top-[20%] -right-[10%] h-[60%] w-[60%] rounded-full bg-orange-500 blur-[130px]"
         />
       </div>
 
-      {/* --- HEADER --- */}
       <header className="relative z-50 flex flex-col items-center px-6 pt-8 pb-4">
         <div className="flex w-full max-w-6xl justify-between items-center">
-          <motion.h1 initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="text-2xl font-black tracking-tighter md:text-3xl italic">
-            GO<span className="text-emerald-500">MATCH</span>
+          <motion.h1
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-2xl font-black tracking-tighter md:text-3xl italic"
+          >
+            GO<span className="text-yellow-400">MATCH</span>
           </motion.h1>
-          <button onClick={finish} className="group flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-bold uppercase tracking-widest backdrop-blur-md transition hover:bg-white/10 active:scale-95">
-            Passer <X className="h-3 w-3" />
-          </button>
+
+          {step > 0 && (
+            <button
+              onClick={() => void finish()}
+              className="group flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-bold uppercase tracking-widest backdrop-blur-md transition hover:bg-white/10 active:scale-95"
+            >
+              Terminer plus tard <X className="h-3 w-3" />
+            </button>
+          )}
         </div>
 
-        <div className="mt-8 w-full max-w-md">
-           <div className="flex justify-between mb-2 px-1">
-              {["Objectif", "Intérêts", "Profil"].map((label, i) => (
-                <span key={i} className={`text-[10px] uppercase tracking-[0.2em] font-black transition-colors duration-500 ${step >= i ? 'text-emerald-400' : 'text-white/20'}`}>
-                  {label}
-                </span>
-              ))}
-           </div>
-           <div className="h-[2px] w-full overflow-hidden rounded-full bg-white/5">
-              <motion.div className="h-full bg-gradient-to-r from-red-500 via-amber-400 to-emerald-400" animate={{ width: `${(step / 2) * 100}%` }} transition={{ type: "spring", stiffness: 100, damping: 20 }} />
-           </div>
+        <div className="mt-8 w-full max-w-2xl">
+          <div className="flex justify-between mb-2 px-1">
+            {["Objectif", "Langue", "Photo", "Intérêts", "Pays"].map((label, i) => (
+              <span
+                key={i}
+                className={`text-[10px] uppercase tracking-[0.2em] font-black transition-colors duration-500 ${
+                  step >= i ? "text-yellow-400" : "text-white/20"
+                }`}
+              >
+                {label}
+              </span>
+            ))}
+          </div>
+
+          <div className="h-[2px] w-full overflow-hidden rounded-full bg-white/5">
+            <motion.div
+              className="h-full bg-gradient-to-r from-yellow-400 via-orange-500 to-yellow-500"
+              animate={{ width: `${(step / 4) * 100}%` }}
+              transition={{ type: "spring", stiffness: 100, damping: 20 }}
+            />
+          </div>
         </div>
       </header>
 
-      {/* --- CONTENT --- */}
       <main className="relative z-10 h-[calc(100dvh-180px)] overflow-y-auto px-6 py-4 custom-scrollbar">
         <div className="mx-auto max-w-6xl h-full">
           <AnimatePresence mode="wait">
-            
             {step === 0 && (
-              <motion.div key="step0" {...pageVariants} transition={{ duration: 0.4 }} className="grid h-full gap-6 md:grid-cols-2 lg:py-10">
+              <motion.div
+                key="step0"
+                {...pageVariants}
+                transition={{ duration: 0.4 }}
+                className="grid h-full gap-6 md:grid-cols-2 lg:py-10"
+              >
                 {GOALS.map((g) => (
                   <motion.button
                     key={g.id}
                     whileHover={{ y: -5, scale: 1.01 }}
                     whileTap={{ scale: 0.98 }}
-                    onClick={() => { setGoal(g.id); setStep(1); }}
-                    className={`group relative overflow-hidden rounded-[40px] border transition-all duration-500 ${goal === g.id ? 'border-emerald-500/50 ring-1 ring-emerald-500/50' : 'border-white/10'}`}
+                    onClick={() => {
+                      setGoal(g.id);
+                      setSubmitError("");
+                    }}
+                    className={`group relative overflow-hidden rounded-[40px] border transition-all duration-500 ${
+                      goal === g.id
+                        ? "border-yellow-400/50 ring-1 ring-yellow-400/50"
+                        : "border-white/10"
+                    }`}
                   >
-                    {/* MODIFICATION ICI : Opacité augmentée pour plus de clarté */}
-                    <Image src={g.image} alt="" fill className="object-cover opacity-70 transition duration-700 group-hover:scale-110 group-hover:opacity-90" />
-                    
-                    {/* MODIFICATION ICI : Dégradé noir ajusté pour être moins opaque en haut et révéler l'image */}
-                    <div className={`absolute inset-0 bg-gradient-to-t ${g.color} via-black/40 to-black/70`} />
-                    
+                    <Image
+                      src={g.image}
+                      alt=""
+                      fill
+                      className="object-cover opacity-70 transition duration-700 group-hover:scale-110 group-hover:opacity-90"
+                    />
+
+                    <div
+                      className={`absolute inset-0 bg-gradient-to-t ${g.color} via-black/40 to-black/70`}
+                    />
+
                     <div className="absolute inset-0 flex flex-col justify-end p-8 text-left">
                       <div className="mb-4 inline-flex w-fit items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest backdrop-blur-xl border border-white/5">
-                        <g.Icon className="h-3 w-3 text-emerald-400" /> {g.badge}
+                        <g.Icon className="h-3 w-3 text-yellow-400" /> {g.badge}
                       </div>
-                      <h2 className="text-4xl font-black uppercase italic tracking-tighter text-white md:text-5xl leading-none">{g.title}</h2>
-                      <p className="mt-4 max-w-[35ch] text-sm leading-relaxed text-slate-400">{g.desc}</p>
-                      <div className="mt-8 flex h-14 w-14 items-center justify-center rounded-full bg-white text-black transition-transform group-hover:translate-x-3">
+                      <h2 className="text-4xl font-black uppercase italic tracking-tighter text-white md:text-5xl leading-none">
+                        {g.title}
+                      </h2>
+                      <p className="mt-4 max-w-[35ch] text-sm leading-relaxed text-slate-400">
+                        {g.desc}
+                      </p>
+                      <div className="mt-8 flex h-14 w-14 items-center justify-center rounded-full bg-yellow-400 text-black transition-transform group-hover:translate-x-3">
                         <ChevronRight size={28} />
                       </div>
                     </div>
@@ -184,32 +734,62 @@ export default function OnboardingPage() {
             )}
 
             {step === 1 && (
-              <motion.div key="step1" {...pageVariants} className="flex flex-col gap-8 py-6 h-full items-center">
+              <motion.div
+                key="step1"
+                {...pageVariants}
+                className="flex flex-col items-center gap-8 py-8"
+              >
                 <div className="text-center space-y-2">
-                  <h2 className="text-3xl font-black italic tracking-tight uppercase">Tes Passions</h2>
-                  {/* FIX ESLint: Apostrophe échappée */}
-                  <p className="text-slate-500 text-sm">{"Sélectionne tes centres d'intérêt pour affiner ton expérience."}</p>
+                  <p className="text-xs uppercase tracking-[0.25em] text-yellow-400 font-black">
+                    Étape 2
+                  </p>
+                  <h2 className="text-3xl md:text-4xl font-black italic tracking-tight uppercase">
+                    Choisis ta langue
+                  </h2>
+                  <p className="text-slate-500 text-sm max-w-xl">
+                    On adapte l’expérience, les recommandations et les contenus à ta langue.
+                  </p>
                 </div>
-                
-                <div className="grid grid-cols-2 gap-4 md:grid-cols-4 w-full">
-                  {INTERESTS.map((it) => {
-                    const selected = interests.includes(it.id);
+
+                <div className="w-full max-w-3xl grid gap-4">
+                  {LANGUAGE_OPTIONS.map((lang) => {
+                    const selected = profileState.langue === lang.value;
+
                     return (
                       <motion.button
-                        key={it.id}
-                        whileHover={{ scale: 1.02, backgroundColor: "rgba(255,255,255,0.06)" }}
-                        whileTap={{ scale: 0.96 }}
-                        onClick={() => setInterests(prev => prev.includes(it.id) ? prev.filter(i => i !== it.id) : [...prev, it.id])}
-                        className={`relative flex flex-col items-center gap-4 rounded-[32px] border p-8 transition-all duration-300 ${selected ? 'border-emerald-500 bg-emerald-500/10 shadow-[0_0_40px_rgba(16,185,129,0.1)]' : 'border-white/5 bg-white/[0.02]'}`}
+                        key={lang.value}
+                        whileHover={{ scale: 1.01 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => {
+                          setSubmitError("");
+                          setProfileState((prev) => ({
+                            ...prev,
+                            langue: lang.value,
+                          }));
+                        }}
+                        className={`w-full rounded-[28px] border px-6 py-5 text-left transition-all ${
+                          selected
+                            ? "border-yellow-400 bg-yellow-400/15 shadow-[0_0_30px_rgba(250,204,21,0.15)]"
+                            : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
+                        }`}
                       >
-                        <div className={`flex h-14 w-14 items-center justify-center rounded-2xl transition-colors ${selected ? 'bg-emerald-500 text-white' : 'bg-white/5 text-slate-500'}`}>
-                          <it.Icon className="h-7 w-7" />
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="flex items-center gap-4">
+                            <span className="text-3xl">{lang.flag}</span>
+                            <div>
+                              <p className="text-lg font-black">{lang.label}</p>
+                              <p className="text-sm text-slate-400">{lang.hint}</p>
+                            </div>
+                          </div>
+
+                          {selected ? (
+                            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-yellow-400">
+                              <Check className="h-4 w-4 text-black" />
+                            </span>
+                          ) : (
+                            <span className="h-8 w-8 rounded-full border border-white/15" />
+                          )}
                         </div>
-                        <div className="text-center">
-                          <span className="block text-sm font-bold tracking-wide">{it.label}</span>
-                          <span className="text-[10px] text-slate-500 uppercase font-medium mt-1">{it.hint}</span>
-                        </div>
-                        {selected && <motion.div initial={{scale:0}} animate={{scale:1}} className="absolute top-4 right-4 h-6 w-6 rounded-full bg-emerald-500 flex items-center justify-center"><Check className="h-3 w-3 text-white" /></motion.div>}
                       </motion.button>
                     );
                   })}
@@ -218,69 +798,460 @@ export default function OnboardingPage() {
             )}
 
             {step === 2 && (
-              <motion.div key="step2" {...pageVariants} className="flex flex-col items-center justify-center py-12 h-full">
-                <div className="w-full max-w-lg space-y-8">
-                  <div className="text-center space-y-2">
-                    {/* FIX ESLint: Apostrophe échappée */}
-                    <h2 className="text-4xl font-black italic tracking-tighter uppercase leading-none">{"C'est presque prêt !"}</h2>
-                    <p className="text-slate-500">Ajoutons les dernières touches pour ton profil public.</p>
-                  </div>
-                  <motion.div layout className="relative overflow-hidden rounded-[40px] border border-white/10 bg-white/[0.03] p-10 backdrop-blur-2xl shadow-2xl">
-                    <AnimatePresence mode="wait">
-                      <motion.div key={setupIndex} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="flex flex-col items-center text-center">
-                        <div className="mb-8 flex h-24 w-24 items-center justify-center rounded-[30px] bg-gradient-to-br from-emerald-400 to-cyan-500 text-black shadow-lg shadow-emerald-500/20">
-                          {React.createElement(SETUP_CARDS[setupIndex].Icon, { size: 40 })}
-                        </div>
-                        <h3 className="text-2xl font-bold">{SETUP_CARDS[setupIndex].title}</h3>
-                        <p className="mt-3 text-slate-400 leading-relaxed">{SETUP_CARDS[setupIndex].desc}</p>
-                        <button className="mt-10 w-full rounded-2xl bg-white py-5 font-black text-black transition hover:bg-emerald-400 active:scale-95 uppercase tracking-widest text-sm">{SETUP_CARDS[setupIndex].cta}</button>
-                        <button onClick={nextSetup} className="mt-6 text-xs font-black uppercase tracking-[0.2em] text-slate-500 hover:text-white transition-colors">Plus tard</button>
+              <motion.div
+                key="step2"
+                {...pageVariants}
+                className="flex flex-col items-center gap-8 py-8"
+              >
+                <div className="text-center space-y-2">
+                  <p className="text-xs uppercase tracking-[0.25em] text-yellow-400 font-black">
+                    Étape 3
+                  </p>
+                  <h2 className="text-3xl md:text-4xl font-black italic tracking-tight uppercase">
+                    Ajoute ta photo
+                  </h2>
+                  <p className="text-slate-500 text-sm max-w-xl">
+                    Facultatif, mais utile pour personnaliser davantage ton profil.
+                  </p>
+                </div>
+
+                <div className="w-full max-w-2xl rounded-[32px] border border-white/10 bg-white/[0.03] p-8 backdrop-blur-2xl">
+                  <div className="flex flex-col items-center gap-6">
+                    {profileState.photoUrl ? (
+                      <motion.div
+                        initial={{ scale: 0.92, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        className="relative h-40 w-40 overflow-hidden rounded-full border border-white/10 shadow-[0_0_40px_rgba(250,204,21,0.15)]"
+                      >
+                        <Image
+                          src={profileState.photoUrl}
+                          alt="Photo de profil"
+                          fill
+                          className="object-cover"
+                          unoptimized
+                        />
                       </motion.div>
-                    </AnimatePresence>
-                  </motion.div>
+                    ) : (
+                      <motion.div
+                        animate={reducedMotion ? {} : { y: [0, -6, 0] }}
+                        transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+                        className="flex h-40 w-40 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-500"
+                      >
+                        <Camera size={42} />
+                      </motion.div>
+                    )}
+
+                    <input
+                      ref={photoInputRef}
+                      type="file"
+                      accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={handlePhotoPick}
+                    />
+
+                    <button
+                      onClick={() => photoInputRef.current?.click()}
+                      className="rounded-2xl bg-gradient-to-r from-yellow-400 to-orange-500 px-8 py-4 font-black text-black transition hover:from-yellow-300 hover:to-orange-400 active:scale-95 uppercase tracking-widest text-sm"
+                    >
+                      {profileState.photoUrl ? "Changer la photo" : "Ajouter une photo"}
+                    </button>
+
+                    <p className="text-xs text-slate-500 text-center max-w-md">
+                      Tu pourras toujours la modifier plus tard depuis ton profil.
+                    </p>
+                  </div>
                 </div>
               </motion.div>
             )}
 
+            {step === 3 && (
+              <motion.div
+                key="step3"
+                {...pageVariants}
+                className="flex flex-col gap-8 py-6 h-full items-center"
+              >
+                <div className="text-center space-y-2">
+                  <p className="text-xs uppercase tracking-[0.25em] text-yellow-400 font-black">
+                    Étape 4
+                  </p>
+                  <h2 className="text-3xl font-black italic tracking-tight uppercase">
+                    Tes centres d&apos;intérêt
+                  </h2>
+                  <p className="text-slate-500 text-sm">
+                    Sélectionne au moins 3 centres d&apos;intérêt pour affiner ton expérience.
+                  </p>
+                  <div className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-bold uppercase tracking-widest text-yellow-400">
+                    {interests.length}/3 minimum
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 md:grid-cols-4 w-full">
+                  {INTERESTS.map((it) => {
+                    const selected = interests.includes(it.id);
+                    return (
+                      <motion.button
+                        key={it.id}
+                        whileHover={{ scale: 1.02, backgroundColor: "rgba(255,255,255,0.06)" }}
+                        whileTap={{ scale: 0.96 }}
+                        onClick={() =>
+                          setInterests((prev) =>
+                            prev.includes(it.id)
+                              ? prev.filter((i) => i !== it.id)
+                              : [...prev, it.id]
+                          )
+                        }
+                        className={`relative flex flex-col items-center gap-4 rounded-[32px] border p-8 transition-all duration-300 ${
+                          selected
+                            ? "border-yellow-400 bg-yellow-400/10 shadow-[0_0_40px_rgba(250,204,21,0.2)]"
+                            : "border-white/5 bg-white/[0.02]"
+                        }`}
+                      >
+                        <div
+                          className={`flex h-14 w-14 items-center justify-center rounded-2xl transition-colors ${
+                            selected
+                              ? "bg-yellow-400 text-black"
+                              : "bg-white/5 text-slate-500"
+                          }`}
+                        >
+                          <it.Icon className="h-7 w-7" />
+                        </div>
+                        <div className="text-center">
+                          <span className="block text-sm font-bold tracking-wide">
+                            {it.label}
+                          </span>
+                          <span className="text-[10px] text-slate-500 uppercase font-medium mt-1">
+                            {it.hint}
+                          </span>
+                        </div>
+                        {selected && (
+                          <motion.div
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            className="absolute top-4 right-4 h-6 w-6 rounded-full bg-yellow-400 flex items-center justify-center"
+                          >
+                            <Check className="h-3 w-3 text-black" />
+                          </motion.div>
+                        )}
+                      </motion.button>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            )}
+
+            {step === 4 && (
+              <motion.div
+                key="step4"
+                {...pageVariants}
+                className="flex flex-col gap-8 py-6 h-full items-center"
+              >
+                <div className="text-center space-y-2">
+                  <p className="text-xs uppercase tracking-[0.25em] text-yellow-400 font-black">
+                    Étape 5
+                  </p>
+                  <h2 className="text-3xl font-black italic tracking-tight uppercase">
+                    Pays suivis
+                  </h2>
+                  <p className="text-slate-500 text-sm">
+                    Choisis au moins un pays avec son drapeau.
+                  </p>
+                  <div className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-bold uppercase tracking-widest text-yellow-400">
+                    {teams.length} sélectionné{teams.length > 1 ? "s" : ""}
+                  </div>
+                </div>
+
+                <div className="w-full rounded-[32px] border border-white/10 bg-white/[0.03] p-6 backdrop-blur-2xl">
+                  <div className="relative mb-5">
+                    <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                    <input
+                      value={teamQuery}
+                      onChange={(e) => setTeamQuery(e.target.value)}
+                      placeholder="Rechercher un pays..."
+                      className="h-12 w-full rounded-2xl border border-white/10 bg-white/5 pl-11 pr-4 text-sm text-white outline-none placeholder:text-slate-500 focus:border-yellow-400/50"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
+                    {filteredTeams.map((team) => {
+                      const selected = teams.includes(team.id);
+                      const Flag = Flags[team.code as CountryCode];
+
+                      if (!Flag) return null;
+
+                      return (
+                        <button
+                          key={team.id}
+                          onClick={() =>
+                            setTeams((prev) =>
+                              prev.includes(team.id)
+                                ? prev.filter((t) => t !== team.id)
+                                : [...prev, team.id]
+                            )
+                          }
+                          className={`flex items-center gap-3 rounded-2xl border px-4 py-4 text-sm font-bold transition-all ${
+                            selected
+                              ? "border-yellow-400 bg-yellow-400/15 text-white shadow-[0_0_20px_rgba(250,204,21,0.25)]"
+                              : "border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10"
+                          }`}
+                        >
+                          <Flag
+                            title={team.label}
+                            className="h-4 w-6 rounded-[3px] shrink-0 shadow-sm"
+                          />
+                          <span className="text-left leading-tight">{team.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {filteredTeams.length === 0 && (
+                    <div className="mt-6 rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-6 text-center text-sm text-slate-500">
+                      Aucun pays ne correspond à ta recherche.
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            )}
           </AnimatePresence>
         </div>
       </main>
 
-      {/* --- FOOTER NAV --- */}
       <AnimatePresence>
         {step > 0 && (
-          <motion.footer initial={{ y: 100 }} animate={{ y: 0 }} exit={{ y: 100 }} className="fixed bottom-0 inset-x-0 z-50 p-6 md:p-10 pointer-events-none">
-            <div className="max-w-6xl mx-auto flex justify-between items-center pointer-events-auto">
+          <motion.footer
+            initial={{ y: 100 }}
+            animate={{ y: 0 }}
+            exit={{ y: 100 }}
+            className="fixed bottom-0 inset-x-0 z-50 p-6 md:p-10 pointer-events-none"
+          >
+            <div className="max-w-6xl mx-auto flex flex-wrap justify-between items-center gap-4 pointer-events-auto">
               <button
-                // FIX TypeScript: Typage explicite as StepNumber
-                onClick={() => setStep((s) => Math.max(0, s - 1) as StepNumber)}
+                onClick={() => {
+                  setSubmitError("");
+                  setStep((s) => Math.max(0, s - 1) as StepNumber);
+                }}
                 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-slate-500 hover:text-white transition group"
               >
-                <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" /> Retour
+                <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
+                Retour
               </button>
 
-              {step === 1 && (
-                <button
-                  disabled={interests.length < 3}
-                  onClick={() => setStep(2)}
-                  className={`flex items-center gap-3 rounded-2xl px-10 py-5 font-black uppercase tracking-widest text-sm transition-all ${interests.length >= 3 ? 'bg-emerald-500 text-white shadow-[0_20px_50px_rgba(16,185,129,0.3)] hover:scale-105 active:scale-95' : 'bg-white/5 text-white/20 cursor-not-allowed opacity-50'}`}
-                >
-                  Suivant <ChevronRight className="h-5 w-5" />
-                </button>
-              )}
+              <div className="flex items-center gap-3">
+                {step === 1 && (
+                  <>
+                    <button
+                      onClick={skipLanguageStep}
+                      className="rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-xs font-black uppercase tracking-widest text-slate-300 transition hover:bg-white/10"
+                    >
+                      Ignorer cette étape
+                    </button>
 
-              {step === 2 && (
-                <button onClick={finish} className="rounded-2xl bg-white px-10 py-5 font-black uppercase tracking-widest text-sm text-black hover:bg-emerald-400 transition-all hover:scale-105 active:scale-95">Accéder au Dashboard</button>
-              )}
+                    <button
+                      disabled={!canGoToPhoto}
+                      onClick={() => {
+                        setSubmitError("");
+                        setStep(2);
+                      }}
+                      className={`flex items-center gap-3 rounded-2xl px-8 py-4 font-black uppercase tracking-widest text-sm transition-all ${
+                        canGoToPhoto
+                          ? "bg-gradient-to-r from-yellow-400 to-orange-500 text-black shadow-[0_20px_50px_rgba(249,115,22,0.3)] hover:scale-105 active:scale-95"
+                          : "bg-white/5 text-white/20 cursor-not-allowed opacity-50"
+                      }`}
+                    >
+                      Suivant <ChevronRight className="h-5 w-5" />
+                    </button>
+                  </>
+                )}
+
+                {step === 2 && (
+                  <>
+                    <button
+                      onClick={skipPhotoStep}
+                      className="rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-xs font-black uppercase tracking-widest text-slate-300 transition hover:bg-white/10"
+                    >
+                      Ignorer cette étape
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setSubmitError("");
+                        setStep(3);
+                      }}
+                      className="flex items-center gap-3 rounded-2xl px-8 py-4 font-black uppercase tracking-widest text-sm transition-all bg-gradient-to-r from-yellow-400 to-orange-500 text-black shadow-[0_20px_50px_rgba(249,115,22,0.3)] hover:scale-105 active:scale-95"
+                    >
+                      Suivant <ChevronRight className="h-5 w-5" />
+                    </button>
+                  </>
+                )}
+
+                {step === 3 && (
+                  <button
+                    disabled={!canGoToTeams}
+                    onClick={() => {
+                      setSubmitError("");
+                      setStep(4);
+                    }}
+                    className={`flex items-center gap-3 rounded-2xl px-8 py-4 font-black uppercase tracking-widest text-sm transition-all ${
+                      canGoToTeams
+                        ? "bg-gradient-to-r from-yellow-400 to-orange-500 text-black shadow-[0_20px_50px_rgba(249,115,22,0.3)] hover:scale-105 active:scale-95"
+                        : "bg-white/5 text-white/20 cursor-not-allowed opacity-50"
+                    }`}
+                  >
+                    Suivant <ChevronRight className="h-5 w-5" />
+                  </button>
+                )}
+
+                {step === 4 && (
+                  <button
+                    onClick={() => void finish()}
+                    disabled={saving || !canFinish}
+                    className="rounded-2xl bg-gradient-to-r from-yellow-400 to-orange-500 px-10 py-5 font-black uppercase tracking-widest text-sm text-black hover:from-yellow-300 hover:to-orange-400 transition-all hover:scale-105 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {saving
+                      ? "Enregistrement..."
+                      : goal === "business"
+                        ? "Continuer vers mon espace commerce"
+                        : "Accéder au Dashboard"}
+                  </button>
+                )}
+              </div>
             </div>
+
+            {submitError && (
+              <div className="max-w-6xl mx-auto mt-4 pointer-events-auto">
+                <p className="text-center text-xs font-bold text-red-400">
+                  {submitError}
+                </p>
+              </div>
+            )}
+          </motion.footer>
+        )}
+
+        {step === 0 && (
+          <motion.footer
+            initial={{ y: 100 }}
+            animate={{ y: 0 }}
+            exit={{ y: 100 }}
+            className="fixed bottom-0 inset-x-0 z-50 p-6 md:p-10 pointer-events-none"
+          >
+            <div className="max-w-6xl mx-auto flex justify-end pointer-events-auto">
+              <button
+                onClick={goToNextFromGoal}
+                className={`flex items-center gap-3 rounded-2xl px-10 py-5 font-black uppercase tracking-widest text-sm transition-all ${
+                  goal
+                    ? "bg-gradient-to-r from-yellow-400 to-orange-500 text-black shadow-[0_20px_50px_rgba(249,115,22,0.3)] hover:scale-105 active:scale-95"
+                    : "bg-white/5 text-white/20 cursor-not-allowed opacity-50"
+                }`}
+              >
+                Continuer <ChevronRight className="h-5 w-5" />
+              </button>
+            </div>
+
+            {submitError && (
+              <div className="max-w-6xl mx-auto mt-4 pointer-events-auto">
+                <p className="text-center text-xs font-bold text-red-400">
+                  {submitError}
+                </p>
+              </div>
+            )}
           </motion.footer>
         )}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {cropModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.96, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.96, opacity: 0 }}
+              className="w-full max-w-2xl rounded-[32px] border border-white/10 bg-[#0b0d14] p-6 shadow-2xl"
+            >
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-black uppercase italic">Recadrer la photo</h3>
+                  <p className="text-sm text-slate-400">Ajuste l’image avant l’envoi</p>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setCropModalOpen(false);
+                    setRawPhotoSrc("");
+                  }}
+                  className="rounded-full border border-white/10 bg-white/5 p-2 text-slate-300 hover:bg-white/10"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="relative h-[380px] overflow-hidden rounded-3xl bg-black">
+                <Cropper
+                  image={rawPhotoSrc}
+                  crop={crop}
+                  zoom={zoom}
+                  aspect={1}
+                  cropShape="round"
+                  showGrid={false}
+                  onCropChange={setCrop}
+                  onZoomChange={setZoom}
+                  onCropComplete={onCropComplete}
+                />
+              </div>
+
+              <div className="mt-5">
+                <label className="mb-2 block text-sm font-semibold text-slate-300">
+                  Zoom
+                </label>
+                <input
+                  type="range"
+                  min={1}
+                  max={3}
+                  step={0.1}
+                  value={zoom}
+                  onChange={(e) => setZoom(Number(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  onClick={() => {
+                    setCropModalOpen(false);
+                    setRawPhotoSrc("");
+                  }}
+                  className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-bold uppercase tracking-widest text-slate-300 hover:bg-white/10"
+                >
+                  Annuler
+                </button>
+
+                <button
+                  onClick={() => void confirmCrop()}
+                  className="rounded-2xl bg-gradient-to-r from-yellow-400 to-orange-500 px-5 py-3 text-sm font-black uppercase tracking-widest text-black hover:from-yellow-300 hover:to-orange-400"
+                >
+                  Valider le recadrage
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <style jsx global>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.05); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.05);
+          border-radius: 10px;
+        }
       `}</style>
     </div>
   );
