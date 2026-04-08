@@ -30,6 +30,7 @@ import {
   Search,
 } from "lucide-react";
 import { authFetch } from "@/lib/authApi";
+import { clearAuthTokens, getAccessToken } from "@/lib/authTokens";
 import {
   WORLD_CUP_2026_TEAMS,
   type CountryCode,
@@ -42,12 +43,32 @@ type Language = "FR" | "EN" | "AR";
 
 type ProfileState = {
   langue: Language;
-  phone: string;
   photoUrl: string;
   photoFile: File | null;
 };
 
+type UserProfileState = {
+  prenom: string;
+  nom: string;
+  dateNaissance: string;
+  genre: string;
+};
+
+type TouristeProfileState = {
+  nationalite: string;
+};
+
+type MerchantFormState = {
+  telephone: string;
+  nomResponsable: string;
+  emailProfessionnel: string;
+  ville: string;
+  adresseProfessionnelle: string;
+  typeActivite: string;
+};
+
 const PROFILE_API = "/profile";
+const MERCHANT_PROFILE_API = "/commercant-profile";
 
 const GOALS = [
   {
@@ -62,7 +83,7 @@ const GOALS = [
   {
     id: "business" as Goal,
     title: "J’ai un commerce",
-    desc: "Prépare ton profil maintenant, puis complète ton espace commerçant dans l’étape suivante.",
+    desc: "Crée ton dossier commerçant. Il sera envoyé en attente de validation administrateur.",
     Icon: Store,
     image: "/goal-business.png",
     badge: "Professionnel",
@@ -83,8 +104,6 @@ const INTERESTS = [
   { id: "Nightlife", label: "Nightlife", Icon: Heart, hint: "Sorties & ambiance" },
   { id: "Events", label: "Événements", Icon: Ticket, hint: "Festivals & activités" },
   { id: "StreetFood", label: "Street Food", Icon: Utensils, hint: "Cuisine rapide locale" },
-
-  
 ];
 
 const LANGUAGE_OPTIONS: Array<{
@@ -104,16 +123,6 @@ const pageVariants = {
   exit: { opacity: 0, x: -20 },
 };
 
-function pickArray(obj: AnyObj, keys: string[]): string[] {
-  for (const key of keys) {
-    const value = obj[key];
-    if (Array.isArray(value)) {
-      return value.filter((x): x is string => typeof x === "string");
-    }
-  }
-  return [];
-}
-
 function pickBoolean(obj: AnyObj, keys: string[]): boolean | null {
   for (const key of keys) {
     const value = obj[key];
@@ -130,6 +139,37 @@ function pickString(obj: AnyObj, keys: string[]): string {
     }
   }
   return "";
+}
+
+function parseJsonArray(value: string): string[] {
+  if (!value.trim()) return [];
+
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) {
+      return parsed.filter((x): x is string => typeof x === "string");
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+function normalizePhotoApiUrl(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return "";
+  if (
+    trimmed === "/profile/me/photo" ||
+    trimmed === "/me/photo" ||
+    trimmed === "/api/touriste/profile/me/photo"
+  ) {
+    return `${PROFILE_API}/me/photo`;
+  }
+  return trimmed;
+}
+
+function isValidEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
 async function tryReadErrorMessage(res: Response): Promise<string | null> {
@@ -193,6 +233,26 @@ async function getCroppedImg(imageSrc: string, pixelCrop: Area): Promise<Blob> {
   });
 }
 
+function clearLocalOnboardingState() {
+  if (typeof window === "undefined") return;
+
+  const keysToRemove = [
+    "gomatch_onboarding",
+    "gomatch_profile_mock_v3",
+    "onboarding",
+    "selectedInterests",
+    "interests",
+    "wizard",
+    "setupStep",
+    "skippedSteps",
+  ];
+
+  for (const key of keysToRemove) {
+    localStorage.removeItem(key);
+    sessionStorage.removeItem(key);
+  }
+}
+
 export default function OnboardingPage() {
   const router = useRouter();
   const reducedMotion = useReducedMotion();
@@ -207,11 +267,32 @@ export default function OnboardingPage() {
   const [saving, setSaving] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [submitError, setSubmitError] = useState("");
+  const [merchantConfirmOpen, setMerchantConfirmOpen] = useState(false);
+
   const [profileState, setProfileState] = useState<ProfileState>({
     langue: "FR",
-    phone: "",
     photoUrl: "",
     photoFile: null,
+  });
+
+  const [userProfileState, setUserProfileState] = useState<UserProfileState>({
+    prenom: "",
+    nom: "",
+    dateNaissance: "",
+    genre: "",
+  });
+
+  const [touristeProfileState, setTouristeProfileState] = useState<TouristeProfileState>({
+    nationalite: "",
+  });
+
+  const [merchantForm, setMerchantForm] = useState<MerchantFormState>({
+    telephone: "",
+    nomResponsable: "",
+    emailProfessionnel: "",
+    ville: "",
+    adresseProfessionnelle: "",
+    typeActivite: "",
   });
 
   const [cropModalOpen, setCropModalOpen] = useState(false);
@@ -231,6 +312,12 @@ export default function OnboardingPage() {
     };
   }, []);
 
+  const forceAccountCreation = useCallback(() => {
+    clearAuthTokens();
+    clearLocalOnboardingState();
+    router.replace("/Register?accountRequired=1");
+  }, [router]);
+
   const replaceBlobUrl = useCallback((nextUrl: string) => {
     if (
       activeBlobUrlRef.current &&
@@ -243,32 +330,52 @@ export default function OnboardingPage() {
     activeBlobUrlRef.current = nextUrl.startsWith("blob:") ? nextUrl : null;
   }, []);
 
-  const loadProtectedPhoto = useCallback(async (url: string): Promise<string> => {
-    const res = await authFetch(url, {
-      method: "GET",
-      cache: "no-store",
-    });
-
-    if (!res.ok) {
-      throw new Error(`Impossible de charger la photo. (HTTP ${res.status})`);
-    }
-
-    const blob = await res.blob();
-    const blobUrl = URL.createObjectURL(blob);
-    replaceBlobUrl(blobUrl);
-    return blobUrl;
-  }, [replaceBlobUrl]);
-
-  const loadProfile = useCallback(async () => {
-    try {
-      const res = await authFetch(`${PROFILE_API}/me`, {
+  const loadProtectedPhoto = useCallback(
+    async (url: string): Promise<string> => {
+      const res = await authFetch(url, {
         method: "GET",
         cache: "no-store",
       });
 
-      if (res.status === 401) {
-        setSubmitError("Session expirée. Merci de vous reconnecter.");
+      if (!res.ok) {
+        throw new Error(`Impossible de charger la photo. (HTTP ${res.status})`);
+      }
+
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      replaceBlobUrl(blobUrl);
+      return blobUrl;
+    },
+    [replaceBlobUrl]
+  );
+
+  const fetchExistingProfile = useCallback(async (): Promise<Response> => {
+    return authFetch(`${PROFILE_API}/me`, {
+      method: "GET",
+      cache: "no-store",
+    });
+  }, []);
+
+  const loadProfile = useCallback(async () => {
+    try {
+      const token = getAccessToken();
+
+      if (!token) {
         router.replace("/signin");
+        return;
+      }
+
+      const res = await fetchExistingProfile();
+
+      if (res.status === 401 || res.status === 403) {
+        setSubmitError("Session expirée. Merci de vous reconnecter.");
+        clearAuthTokens();
+        router.replace("/signin");
+        return;
+      }
+
+      if (res.status === 404) {
+        forceAccountCreation();
         return;
       }
 
@@ -280,32 +387,34 @@ export default function OnboardingPage() {
 
       const data = (await res.json()) as AnyObj;
 
-      const existingPreferences = pickArray(data, [
-        "preferences",
-        "Preferences",
-        "interests",
-        "Interests",
-      ]);
+      const userProfile =
+        data.userProfile && typeof data.userProfile === "object"
+          ? (data.userProfile as AnyObj)
+          : {};
 
-      const existingTeams = pickArray(data, [
-        "equipesSuivies",
-        "EquipesSuivies",
-        "teams",
-        "Teams",
-        "followedTeams",
-        "FollowedTeams",
-      ]);
+      const existingPreferences = parseJsonArray(
+        pickString(data, ["preferencesJson", "PreferencesJson"])
+      );
+
+      const existingTeams = parseJsonArray(
+        pickString(data, ["equipesSuiviesJson", "EquipesSuiviesJson"])
+      );
 
       const onboardingDone = pickBoolean(data, [
         "inscriptionTerminee",
         "InscriptionTerminee",
-        "onboardingCompleted",
-        "OnboardingCompleted",
       ]);
 
-      const langue = pickString(data, ["langue", "Langue"]);
-      const phone = pickString(data, ["phone", "Phone", "telephone", "Telephone"]);
-      const photoUrlFromApi = pickString(data, ["photoUrl", "PhotoUrl", "photo", "Photo"]);
+      const langue = pickString(userProfile, ["langue", "Langue"]);
+      const photoUrlFromApi = normalizePhotoApiUrl(
+        pickString(userProfile, ["photoUrl", "PhotoUrl"])
+      );
+
+      const prenom = pickString(userProfile, ["prenom", "Prenom"]);
+      const nom = pickString(userProfile, ["nom", "Nom"]);
+      const dateNaissance = pickString(userProfile, ["dateNaissance", "DateNaissance"]);
+      const genre = pickString(userProfile, ["genre", "Genre"]);
+      const nationalite = pickString(data, ["nationalite", "Nationalite"]);
 
       let resolvedPhotoUrl = "";
 
@@ -320,14 +429,24 @@ export default function OnboardingPage() {
         replaceBlobUrl("");
       }
 
-      if (existingPreferences.length > 0) setInterests(existingPreferences);
-      if (existingTeams.length > 0) setTeams(existingTeams);
+      setInterests(existingPreferences);
+      setTeams(existingTeams);
 
       setProfileState({
         langue: langue === "EN" || langue === "AR" ? langue : "FR",
-        phone,
         photoUrl: resolvedPhotoUrl,
         photoFile: null,
+      });
+
+      setUserProfileState({
+        prenom,
+        nom,
+        dateNaissance,
+        genre,
+      });
+
+      setTouristeProfileState({
+        nationalite,
       });
 
       if (onboardingDone === true) {
@@ -338,7 +457,7 @@ export default function OnboardingPage() {
     } finally {
       setLoadingProfile(false);
     }
-  }, [loadProtectedPhoto, replaceBlobUrl, router]);
+  }, [fetchExistingProfile, forceAccountCreation, loadProtectedPhoto, replaceBlobUrl, router]);
 
   useEffect(() => {
     void loadProfile();
@@ -359,9 +478,15 @@ export default function OnboardingPage() {
 
   const canGoToPhoto = Boolean(profileState.langue);
   const canGoToTeams = interests.length >= 3;
-  const canFinish = teams.length >= 1 && Boolean(profileState.langue) && goal !== null;
+  const canFinish = teams.length >= 1 && Boolean(profileState.langue) && goal === "experience";
 
-  const savePhoto = async (): Promise<{ ok: boolean; message?: string }> => {
+  const canSubmitMerchant =
+    merchantForm.telephone.trim().length > 0 &&
+    merchantForm.nomResponsable.trim().length > 0 &&
+    merchantForm.emailProfessionnel.trim().length > 0 &&
+    merchantForm.typeActivite.trim().length > 0;
+
+  const savePhoto = useCallback(async (): Promise<{ ok: boolean; message?: string }> => {
     if (!profileState.photoFile) {
       return { ok: true };
     }
@@ -374,10 +499,17 @@ export default function OnboardingPage() {
       body: formData,
     });
 
-    if (res.status === 401) {
+    if (res.status === 401 || res.status === 403) {
       return {
         ok: false,
         message: "Session expirée. Merci de vous reconnecter.",
+      };
+    }
+
+    if (res.status === 404) {
+      return {
+        ok: false,
+        message: "Profil introuvable. Veuillez créer un compte valide.",
       };
     }
 
@@ -391,7 +523,9 @@ export default function OnboardingPage() {
 
     try {
       const data = (await res.json()) as AnyObj;
-      const uploadedPhotoUrl = pickString(data, ["photoUrl", "PhotoUrl"]);
+      const uploadedPhotoUrl = normalizePhotoApiUrl(
+        pickString(data, ["photoUrl", "PhotoUrl"])
+      );
 
       let resolvedPhotoUrl = profileState.photoUrl;
 
@@ -416,39 +550,127 @@ export default function OnboardingPage() {
     }
 
     return { ok: true };
-  };
+  }, [loadProtectedPhoto, profileState.photoFile, profileState.photoUrl]);
 
-  const savePreferences = async () => {
+  const saveUserProfile = useCallback(async (): Promise<{ ok: boolean; message?: string }> => {
+    if (
+      !userProfileState.prenom.trim() ||
+      !userProfileState.nom.trim() ||
+      !userProfileState.dateNaissance.trim() ||
+      !userProfileState.genre.trim()
+    ) {
+      return {
+        ok: false,
+        message:
+          "Les informations de base du profil sont absentes. Vérifie que le compte a bien été créé avant l'onboarding.",
+      };
+    }
+
+    let isoDate = userProfileState.dateNaissance;
+
+    if (!isoDate.includes("T")) {
+      isoDate = `${isoDate}T00:00:00`;
+    }
+
     const body = {
-      preferences: interests,
-      equipesSuivies: teams,
+      prenom: userProfileState.prenom,
+      nom: userProfileState.nom,
+      dateNaissance: isoDate,
+      genre: userProfileState.genre,
       langue: profileState.langue,
     };
 
-    return authFetch(`${PROFILE_API}/me/preferences`, {
+    const res = await authFetch(`${PROFILE_API}/me/user`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
     });
-  };
 
-  const completeOnboarding = async () => {
-    const body = {
-      preferences: interests,
-      equipesSuivies: teams,
-      langue: profileState.langue,
-    };
+    if (res.status === 401 || res.status === 403) {
+      return {
+        ok: false,
+        message: "Session expirée. Merci de vous reconnecter.",
+      };
+    }
 
+    if (res.status === 404) {
+      return {
+        ok: false,
+        message: "Profil introuvable. Veuillez créer un compte valide.",
+      };
+    }
+
+    if (!res.ok) {
+      const message = await tryReadErrorMessage(res);
+      return {
+        ok: false,
+        message: message ?? `Impossible d'enregistrer la langue. (HTTP ${res.status})`,
+      };
+    }
+
+    return { ok: true };
+  }, [profileState.langue, userProfileState]);
+
+  const savePreferences = useCallback(async (): Promise<Response> => {
+    return authFetch(`${PROFILE_API}/me/preferences`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        preferencesJson: JSON.stringify(interests),
+        equipesSuiviesJson: JSON.stringify(teams),
+      }),
+    });
+  }, [interests, teams]);
+
+  const completeOnboarding = useCallback(async (): Promise<Response> => {
     return authFetch(`${PROFILE_API}/me/onboarding`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        nationalite: touristeProfileState.nationalite || null,
+        preferencesJson: JSON.stringify(interests),
+        equipesSuiviesJson: JSON.stringify(teams),
+      }),
     });
-  };
+  }, [interests, teams, touristeProfileState.nationalite]);
+
+  const initMerchantProfile = useCallback(async (): Promise<Response> => {
+    return authFetch(`${MERCHANT_PROFILE_API}/me/init`, {
+      method: "POST",
+    });
+  }, []);
+
+  const submitMerchantProfile = useCallback(async (): Promise<Response> => {
+    const payload = {
+      telephone: merchantForm.telephone.trim(),
+      nomResponsable: merchantForm.nomResponsable.trim(),
+      emailProfessionnel: merchantForm.emailProfessionnel.trim(),
+      ville: merchantForm.ville.trim() || null,
+      adresseProfessionnelle: merchantForm.adresseProfessionnelle.trim() || null,
+      typeActivite: merchantForm.typeActivite.trim(),
+    };
+
+    console.log("MERCHANT PAYLOAD:", payload);
+
+    return authFetch(`${MERCHANT_PROFILE_API}/me/business`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+  }, [merchantForm]);
+
+  const handleForbiddenProfileState = useCallback(() => {
+    setSubmitError("Compte ou profil invalide. Veuillez créer un compte avant d'accéder à l'onboarding.");
+    forceAccountCreation();
+  }, [forceAccountCreation]);
 
   const finish = async () => {
     setSubmitError("");
@@ -456,6 +678,11 @@ export default function OnboardingPage() {
     if (!goal) {
       setStep(0);
       setSubmitError("Choisis un objectif pour continuer.");
+      return;
+    }
+
+    if (goal === "business") {
+      setMerchantConfirmOpen(true);
       return;
     }
 
@@ -480,11 +707,33 @@ export default function OnboardingPage() {
     setSaving(true);
 
     try {
+      const userResult = await saveUserProfile();
+
+      if (!userResult.ok) {
+        if (userResult.message?.includes("Profil introuvable")) {
+          handleForbiddenProfileState();
+          return;
+        }
+
+        setSubmitError(userResult.message ?? "Impossible d'enregistrer la langue.");
+        if (userResult.message?.includes("Session expirée")) {
+          clearAuthTokens();
+          router.replace("/signin");
+        }
+        return;
+      }
+
       const photoResult = await savePhoto();
 
       if (!photoResult.ok) {
+        if (photoResult.message?.includes("Profil introuvable")) {
+          handleForbiddenProfileState();
+          return;
+        }
+
         setSubmitError(photoResult.message ?? "Impossible d'enregistrer la photo du profil.");
         if (photoResult.message?.includes("Session expirée")) {
+          clearAuthTokens();
           router.replace("/signin");
         }
         return;
@@ -492,9 +741,15 @@ export default function OnboardingPage() {
 
       const prefRes = await savePreferences();
 
-      if (prefRes.status === 401) {
+      if (prefRes.status === 401 || prefRes.status === 403) {
         setSubmitError("Session expirée. Merci de vous reconnecter.");
+        clearAuthTokens();
         router.replace("/signin");
+        return;
+      }
+
+      if (prefRes.status === 404) {
+        handleForbiddenProfileState();
         return;
       }
 
@@ -508,9 +763,15 @@ export default function OnboardingPage() {
 
       const onboardingRes = await completeOnboarding();
 
-      if (onboardingRes.status === 401) {
+      if (onboardingRes.status === 401 || onboardingRes.status === 403) {
         setSubmitError("Session expirée. Merci de vous reconnecter.");
+        clearAuthTokens();
         router.replace("/signin");
+        return;
+      }
+
+      if (onboardingRes.status === 404) {
+        handleForbiddenProfileState();
         return;
       }
 
@@ -519,11 +780,6 @@ export default function OnboardingPage() {
         setSubmitError(
           message ?? `Impossible de finaliser l'onboarding. (HTTP ${onboardingRes.status})`
         );
-        return;
-      }
-
-      if (goal === "business") {
-        router.replace("/merchant/onboarding");
         return;
       }
 
@@ -587,8 +843,142 @@ export default function OnboardingPage() {
       setSubmitError("Choisis un objectif pour continuer.");
       return;
     }
+
     setSubmitError("");
+
+    if (goal === "business") {
+      setMerchantConfirmOpen(true);
+      return;
+    }
+
     setStep(1);
+  };
+
+  const confirmMerchantFlow = async () => {
+    setSubmitError("");
+
+    if (!merchantForm.telephone.trim()) {
+      setSubmitError("Le téléphone est obligatoire.");
+      return;
+    }
+
+    if (!merchantForm.nomResponsable.trim()) {
+      setSubmitError("Le nom du responsable est obligatoire.");
+      return;
+    }
+
+    if (!merchantForm.emailProfessionnel.trim()) {
+      setSubmitError("L'email professionnel est obligatoire.");
+      return;
+    }
+
+    if (!isValidEmail(merchantForm.emailProfessionnel)) {
+      setSubmitError("Veuillez saisir une adresse email professionnelle valide.");
+      return;
+    }
+
+    if (!merchantForm.typeActivite.trim()) {
+      setSubmitError("Le type d’activité est obligatoire.");
+      return;
+    }
+
+    if (!canSubmitMerchant) {
+      setSubmitError(
+        "Téléphone, nom du responsable, email professionnel et type d’activité sont obligatoires."
+      );
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const userResult = await saveUserProfile();
+
+      if (!userResult.ok) {
+        if (userResult.message?.includes("Profil introuvable")) {
+          handleForbiddenProfileState();
+          return;
+        }
+
+        setSubmitError(userResult.message ?? "Impossible d'enregistrer le profil.");
+        if (userResult.message?.includes("Session expirée")) {
+          clearAuthTokens();
+          router.replace("/signin");
+        }
+        return;
+      }
+
+      const photoResult = await savePhoto();
+
+      if (!photoResult.ok) {
+        if (photoResult.message?.includes("Profil introuvable")) {
+          handleForbiddenProfileState();
+          return;
+        }
+
+        setSubmitError(photoResult.message ?? "Impossible d'enregistrer la photo du profil.");
+        if (photoResult.message?.includes("Session expirée")) {
+          clearAuthTokens();
+          router.replace("/signin");
+        }
+        return;
+      }
+
+      const initRes = await initMerchantProfile();
+
+      if (initRes.status === 401 || initRes.status === 403) {
+        setSubmitError("Session expirée. Merci de vous reconnecter.");
+        clearAuthTokens();
+        router.replace("/signin");
+        return;
+      }
+
+      if (initRes.status === 404) {
+        handleForbiddenProfileState();
+        return;
+      }
+
+      if (!initRes.ok && initRes.status !== 409) {
+        const message = await tryReadErrorMessage(initRes);
+        setSubmitError(
+          message ?? `Impossible d'initialiser le profil commerçant. (HTTP ${initRes.status})`
+        );
+        return;
+      }
+
+      const merchantRes = await submitMerchantProfile();
+
+      if (merchantRes.status === 401 || merchantRes.status === 403) {
+        setSubmitError("Session expirée. Merci de vous reconnecter.");
+        clearAuthTokens();
+        router.replace("/signin");
+        return;
+      }
+
+      if (merchantRes.status === 404) {
+        handleForbiddenProfileState();
+        return;
+      }
+
+      if (!merchantRes.ok) {
+        const message = await tryReadErrorMessage(merchantRes);
+        setSubmitError(
+          message ?? `Impossible d'envoyer la demande commerçant. (HTTP ${merchantRes.status})`
+        );
+        return;
+      }
+
+      setMerchantConfirmOpen(false);
+      router.replace(
+        `/dashboard?merchantRequest=email-verification-sent&email=${encodeURIComponent(
+          merchantForm.emailProfessionnel.trim()
+        )}`
+      );
+    } catch {
+      setSubmitError("Erreur réseau : impossible d’envoyer la demande commerçant.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const skipLanguageStep = () => {
@@ -1107,11 +1497,7 @@ export default function OnboardingPage() {
                     disabled={saving || !canFinish}
                     className="rounded-2xl bg-gradient-to-r from-yellow-400 to-orange-500 px-10 py-5 font-black uppercase tracking-widest text-sm text-black hover:from-yellow-300 hover:to-orange-400 transition-all hover:scale-105 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    {saving
-                      ? "Enregistrement..."
-                      : goal === "business"
-                        ? "Continuer vers mon espace commerce"
-                        : "Accéder au Dashboard"}
+                    {saving ? "Enregistrement..." : "Accéder au Dashboard"}
                   </button>
                 )}
               </div>
@@ -1155,6 +1541,118 @@ export default function OnboardingPage() {
               </div>
             )}
           </motion.footer>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {merchantConfirmOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.96, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.96, opacity: 0 }}
+              className="w-full max-w-2xl rounded-[32px] border border-white/10 bg-[#0b0d14] p-6 shadow-2xl"
+            >
+              <div className="space-y-3">
+                <div className="inline-flex items-center gap-2 rounded-full border border-yellow-400/20 bg-yellow-400/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-yellow-400">
+                  <Store className="h-3 w-3" />
+                  Demande commerçant
+                </div>
+
+                <h3 className="text-2xl font-black uppercase italic tracking-tight">
+                  Compléter le dossier commerçant
+                </h3>
+
+                <p className="text-sm leading-relaxed text-slate-400">
+                  Renseigne les informations minimales du profil commerçant.
+                  Une confirmation sera envoyée à l’adresse email professionnelle avant transmission de la demande.
+                </p>
+              </div>
+
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <input
+                  value={merchantForm.telephone}
+                  onChange={(e) =>
+                    setMerchantForm((prev) => ({ ...prev, telephone: e.target.value }))
+                  }
+                  placeholder="Téléphone *"
+                  className="h-12 rounded-2xl border border-white/10 bg-white/5 px-4 text-sm text-white outline-none placeholder:text-slate-500 focus:border-yellow-400/50"
+                />
+
+                <input
+                  value={merchantForm.nomResponsable}
+                  onChange={(e) =>
+                    setMerchantForm((prev) => ({ ...prev, nomResponsable: e.target.value }))
+                  }
+                  placeholder="Nom du responsable *"
+                  className="h-12 rounded-2xl border border-white/10 bg-white/5 px-4 text-sm text-white outline-none placeholder:text-slate-500 focus:border-yellow-400/50"
+                />
+
+                <input
+                  type="email"
+                  value={merchantForm.emailProfessionnel}
+                  onChange={(e) =>
+                    setMerchantForm((prev) => ({ ...prev, emailProfessionnel: e.target.value }))
+                  }
+                  placeholder="Email professionnel *"
+                  className="h-12 rounded-2xl border border-white/10 bg-white/5 px-4 text-sm text-white outline-none placeholder:text-slate-500 focus:border-yellow-400/50"
+                />
+
+                <input
+                  value={merchantForm.ville}
+                  onChange={(e) =>
+                    setMerchantForm((prev) => ({ ...prev, ville: e.target.value }))
+                  }
+                  placeholder="Ville"
+                  className="h-12 rounded-2xl border border-white/10 bg-white/5 px-4 text-sm text-white outline-none placeholder:text-slate-500 focus:border-yellow-400/50"
+                />
+
+                <input
+                  value={merchantForm.typeActivite}
+                  onChange={(e) =>
+                    setMerchantForm((prev) => ({ ...prev, typeActivite: e.target.value }))
+                  }
+                  placeholder="Type d’activité *"
+                  className="h-12 rounded-2xl border border-white/10 bg-white/5 px-4 text-sm text-white outline-none placeholder:text-slate-500 focus:border-yellow-400/50 md:col-span-2"
+                />
+
+                <textarea
+                  value={merchantForm.adresseProfessionnelle}
+                  onChange={(e) =>
+                    setMerchantForm((prev) => ({
+                      ...prev,
+                      adresseProfessionnelle: e.target.value,
+                    }))
+                  }
+                  placeholder="Adresse professionnelle"
+                  rows={4}
+                  className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-yellow-400/50 md:col-span-2"
+                />
+              </div>
+
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  onClick={() => setMerchantConfirmOpen(false)}
+                  className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-bold uppercase tracking-widest text-slate-300 hover:bg-white/10"
+                >
+                  Annuler
+                </button>
+
+                <button
+                  onClick={confirmMerchantFlow}
+                  disabled={saving || !canSubmitMerchant}
+                  className="rounded-2xl bg-gradient-to-r from-yellow-400 to-orange-500 px-5 py-3 text-sm font-black uppercase tracking-widest text-black hover:from-yellow-300 hover:to-orange-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {saving ? "Envoi..." : "Envoyer la demande"}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
 

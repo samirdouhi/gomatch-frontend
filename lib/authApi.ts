@@ -4,40 +4,47 @@ import {
   setAuthTokens,
   clearAuthTokens,
 } from "./authTokens";
+import { buildUrl } from "./utils";
 
-const GATEWAY_BASE = process.env.NEXT_PUBLIC_GATEWAY_BASE_URL;
-
-type TokenResponse = {
+export type TokenResponse = {
   accessToken: string;
   expiresAtUtc: string;
   refreshToken: string;
 };
 
+export type GoogleLoginRequestDto = {
+  idToken: string;
+};
+
+export type LoginRequestDto = {
+  email: string;
+  password: string;
+};
+
+type ApiMessageResponse = {
+  message?: string;
+  erreur?: string;
+  error?: string;
+  title?: string;
+};
+
 let refreshPromise: Promise<boolean> | null = null;
 
-function getGatewayBase(): string {
-  if (!GATEWAY_BASE) {
-    throw new Error("NEXT_PUBLIC_GATEWAY_BASE_URL is not defined");
+function getApiErrorMessage(data: unknown, fallback: string): string {
+  if (typeof data !== "object" || data === null) {
+    return fallback;
   }
 
-  return GATEWAY_BASE.replace(/\/+$/, "");
-}
+  const d = data as ApiMessageResponse;
 
-function buildUrl(path: string): string {
-  if (/^https?:\/\//i.test(path)) {
-    return path;
-  }
-
-  const base = getGatewayBase();
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  return `${base}${normalizedPath}`;
+  return d.message || d.erreur || d.error || d.title || fallback;
 }
 
 async function refreshSession(): Promise<boolean> {
   const rt = getRefreshToken();
   if (!rt) return false;
 
-  const res = await fetch(buildUrl("/api/auth/refresh"), {
+  const res = await fetch(buildUrl("/auth/refresh"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ refreshToken: rt }),
@@ -45,9 +52,9 @@ async function refreshSession(): Promise<boolean> {
 
   if (!res.ok) return false;
 
-  const data = (await res.json()) as TokenResponse;
+  const data = (await res.json().catch(() => null)) as TokenResponse | null;
 
-  if (!data.accessToken || !data.expiresAtUtc) {
+  if (!data?.accessToken || !data?.expiresAtUtc) {
     return false;
   }
 
@@ -91,9 +98,9 @@ export async function authFetch(path: string, init: RequestInit = {}) {
     return first;
   }
 
-  const ok = await ensureRefreshed();
+  const refreshed = await ensureRefreshed();
 
-  if (!ok) {
+  if (!refreshed) {
     clearAuthTokens();
     return first;
   }
@@ -106,13 +113,154 @@ export async function authFetch(path: string, init: RequestInit = {}) {
   });
 }
 
+export async function loginRequest(
+  dto: LoginRequestDto
+): Promise<TokenResponse> {
+  const res = await fetch(buildUrl("/auth/login"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(dto),
+  });
+
+  const data = (await res.json().catch(() => null)) as
+    | (TokenResponse & ApiMessageResponse)
+    | null;
+
+  if (!res.ok) {
+    throw new Error(getApiErrorMessage(data, "Connexion échouée."));
+  }
+
+  if (!data?.accessToken || !data?.expiresAtUtc) {
+    throw new Error("Réponse invalide du serveur.");
+  }
+
+  setAuthTokens(data.accessToken, data.expiresAtUtc, data.refreshToken);
+  return data;
+}
+
+export async function googleLogin(
+  dto: GoogleLoginRequestDto
+): Promise<TokenResponse> {
+  const res = await fetch(buildUrl("/auth/google"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(dto),
+  });
+
+  const data = (await res.json().catch(() => null)) as
+    | (TokenResponse & ApiMessageResponse)
+    | null;
+
+  if (!res.ok) {
+    throw new Error(getApiErrorMessage(data, "Connexion Google échouée."));
+  }
+
+  if (!data?.accessToken || !data?.expiresAtUtc) {
+    throw new Error("Réponse invalide du serveur.");
+  }
+
+  setAuthTokens(data.accessToken, data.expiresAtUtc, data.refreshToken);
+  return data;
+}
+
+export async function confirmEmailRequest(token: string) {
+  try {
+    const res = await fetch(
+      buildUrl(`/email/confirm?token=${encodeURIComponent(token)}`),
+      {
+        method: "GET",
+        cache: "no-store",
+        headers: {
+          Accept: "application/json",
+        },
+      }
+    );
+
+    const data = (await res.json().catch(() => null)) as ApiMessageResponse | null;
+
+    if (!res.ok) {
+      throw new Error(
+        getApiErrorMessage(data, "Impossible de confirmer votre adresse email.")
+      );
+    }
+
+    return data;
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      if (error.message === "Failed to fetch") {
+        throw new Error("Impossible de contacter le serveur (Gateway).");
+      }
+
+      throw error;
+    }
+
+    throw new Error("Erreur réseau pendant la confirmation de l’email.");
+  }
+}
+
+export async function resendConfirmationEmailRequest(email: string) {
+  const res = await fetch(buildUrl("/email/resend-confirmation"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+
+  const data = (await res.json().catch(() => null)) as ApiMessageResponse | null;
+
+  if (!res.ok) {
+    throw new Error(
+      getApiErrorMessage(data, "Impossible de renvoyer l’email de confirmation.")
+    );
+  }
+
+  return data;
+}
+
+type ConfirmProfessionalEmailResponse = {
+  message?: string;
+  error?: string;
+  title?: string;
+};
+
+export async function confirmProfessionalEmailRequest(token: string) {
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_GATEWAY_BASE_URL}/commercant-profile/confirm-professional-email?token=${encodeURIComponent(token)}`,
+    {
+      method: "GET",
+      cache: "no-store",
+    }
+  );
+
+  let data: ConfirmProfessionalEmailResponse | null = null;
+
+  try {
+    data = (await res.json()) as ConfirmProfessionalEmailResponse;
+  } catch {
+    data = null;
+  }
+
+  if (!res.ok) {
+    throw new Error(
+      data?.message ||
+        data?.error ||
+        data?.title ||
+        "Erreur lors de la confirmation de l’email professionnel."
+    );
+  }
+
+  return data;
+}
 export async function logoutRequest() {
   const rt = getRefreshToken();
+  const at = getAccessToken();
 
   if (rt) {
-    await fetch(buildUrl("/api/auth/logout"), {
+    await fetch(buildUrl("/auth/logout"), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(at ? { Authorization: `Bearer ${at}` } : {}),
+      },
       body: JSON.stringify({ refreshToken: rt }),
     }).catch(() => {});
   }

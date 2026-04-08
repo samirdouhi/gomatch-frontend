@@ -137,16 +137,35 @@ function pickBoolean(obj: AnyObj, keys: string[]): boolean {
   return false;
 }
 
-function pickArray(obj: AnyObj, keys: string[]): string[] {
-  for (const key of keys) {
-    const value = obj[key];
-    if (Array.isArray(value)) {
-      return value.filter(
+function parseJsonArray(value: string): string[] {
+  if (!value.trim()) return [];
+
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) {
+      return parsed.filter(
         (x): x is string => typeof x === "string" && x.trim().length > 0
       );
     }
+    return [];
+  } catch {
+    return [];
   }
-  return [];
+}
+
+function normalizePhotoApiUrl(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return "";
+
+  if (
+    trimmed === "/profile/me/photo" ||
+    trimmed === "/me/photo" ||
+    trimmed === "/api/touriste/profile/me/photo"
+  ) {
+    return "/profile/me/photo";
+  }
+
+  return trimmed;
 }
 
 function formatDate(value: string) {
@@ -262,21 +281,24 @@ export default function ProfilePage() {
     activeBlobUrlRef.current = nextUrl.startsWith("blob:") ? nextUrl : null;
   }, []);
 
-  const loadProtectedPhoto = useCallback(async (url: string): Promise<string> => {
-    const res = await authFetch(url, {
-      method: "GET",
-      cache: "no-store",
-    });
+  const loadProtectedPhoto = useCallback(
+    async (url: string): Promise<string> => {
+      const res = await authFetch(url, {
+        method: "GET",
+        cache: "no-store",
+      });
 
-    if (!res.ok) {
-      throw new Error(`Impossible de charger la photo. (HTTP ${res.status})`);
-    }
+      if (!res.ok) {
+        throw new Error(`Impossible de charger la photo. (HTTP ${res.status})`);
+      }
 
-    const blob = await res.blob();
-    const blobUrl = URL.createObjectURL(blob);
-    replaceBlobUrl(blobUrl);
-    return blobUrl;
-  }, [replaceBlobUrl]);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      replaceBlobUrl(blobUrl);
+      return blobUrl;
+    },
+    [replaceBlobUrl]
+  );
 
   const loadProfile = useCallback(async () => {
     try {
@@ -306,32 +328,48 @@ export default function ProfilePage() {
       const emailFromApi = pickString(data, ["email", "Email"]);
       const emailFromToken = getEmailFromToken(token);
 
+      const userProfile =
+        data.userProfile && typeof data.userProfile === "object"
+          ? (data.userProfile as AnyObj)
+          : {};
+
       const nextProfile: ProfileData = {
-        prenom: pickString(data, ["prenom", "Prenom", "firstName", "FirstName"]),
-        nom: pickString(data, ["nom", "Nom", "lastName", "LastName"]),
+        prenom: pickString(userProfile, [
+          "prenom",
+          "Prenom",
+          "firstName",
+          "FirstName",
+        ]),
+        nom: pickString(userProfile, [
+          "nom",
+          "Nom",
+          "lastName",
+          "LastName",
+        ]),
         email: emailFromApi || emailFromToken,
-        dateNaissance: pickString(data, [
+        dateNaissance: pickString(userProfile, [
           "dateNaissance",
           "DateNaissance",
           "birthDate",
           "BirthDate",
         ]),
-        genre: pickString(data, ["genre", "Genre"]),
-        photoUrl: pickString(data, ["photoUrl", "PhotoUrl", "photo", "Photo"]),
-        langue: pickString(data, ["langue", "Langue"]),
+        genre: pickString(userProfile, ["genre", "Genre"]),
+        photoUrl: normalizePhotoApiUrl(
+          pickString(userProfile, ["photoUrl", "PhotoUrl", "photo", "Photo"])
+        ),
+        langue: pickString(userProfile, ["langue", "Langue"]),
         inscriptionTerminee: pickBoolean(data, [
           "inscriptionTerminee",
           "InscriptionTerminee",
           "onboardingCompleted",
           "OnboardingCompleted",
         ]),
-        preferences: pickArray(data, ["preferences", "Preferences"]),
-        equipesSuivies: pickArray(data, [
-          "equipesSuivies",
-          "EquipesSuivies",
-          "followedTeams",
-          "FollowedTeams",
-        ]),
+        preferences: parseJsonArray(
+          pickString(data, ["preferencesJson", "PreferencesJson"])
+        ),
+        equipesSuivies: parseJsonArray(
+          pickString(data, ["equipesSuiviesJson", "EquipesSuiviesJson"])
+        ),
       };
 
       setProfile(nextProfile);
@@ -341,6 +379,7 @@ export default function ProfilePage() {
           const photoBlobUrl = await loadProtectedPhoto(nextProfile.photoUrl);
           setResolvedPhotoUrl(photoBlobUrl);
         } catch {
+          replaceBlobUrl("");
           setResolvedPhotoUrl("");
           setImageError(true);
         }
@@ -378,10 +417,26 @@ export default function ProfilePage() {
   }, [profile, resolvedPhotoUrl]);
 
   const tabs: { key: TabKey; label: string; icon: ReactNode }[] = [
-    { key: "overview", label: "Vue générale", icon: <LayoutGrid className="h-4 w-4" /> },
-    { key: "infos", label: "Informations", icon: <Info className="h-4 w-4" /> },
-    { key: "preferences", label: "Préférences", icon: <Star className="h-4 w-4" /> },
-    { key: "other", label: "Autres", icon: <Layers3 className="h-4 w-4" /> },
+    {
+      key: "overview",
+      label: "Vue générale",
+      icon: <LayoutGrid className="h-4 w-4" />,
+    },
+    {
+      key: "infos",
+      label: "Informations",
+      icon: <Info className="h-4 w-4" />,
+    },
+    {
+      key: "preferences",
+      label: "Préférences",
+      icon: <Star className="h-4 w-4" />,
+    },
+    {
+      key: "other",
+      label: "Autres",
+      icon: <Layers3 className="h-4 w-4" />,
+    },
   ];
 
   if (loading) {
@@ -470,7 +525,9 @@ export default function ProfilePage() {
             <div className="p-6">
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 transition-all duration-300 hover:shadow-[0_0_20px_rgba(245,158,11,0.08)]">
                 <div className="mb-3 flex items-center justify-between">
-                  <p className="text-sm font-medium text-slate-700">Complétion du profil</p>
+                  <p className="text-sm font-medium text-slate-700">
+                    Complétion du profil
+                  </p>
                   <span className="text-lg font-semibold text-slate-900">
                     {completionScore}%
                   </span>

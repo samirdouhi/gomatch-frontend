@@ -55,6 +55,9 @@
   "i18n-iso-countries": "^7.14.0",
   
     
+  "jwt-decode": "^4.0.0",
+  
+    
   "leaflet": "^1.9.4",
   
     
@@ -93,6 +96,9 @@
   
     
   "@tailwindcss/postcss": "^4.1.18",
+  
+    
+  "@types/jwt-decode": "^2.2.1",
   
     
   "@types/leaflet": "^1.9.21",

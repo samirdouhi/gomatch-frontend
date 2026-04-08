@@ -1,6 +1,7 @@
 import "./globals.css";
 import { ThemeProvider } from "./providers";
 import ClientShell from "./components/ClientShell";
+import Script from "next/script";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -9,14 +10,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeProvider>
           <ClientShell>{children}</ClientShell>
         </ThemeProvider>
+
+        <Script
+          src="https://accounts.google.com/gsi/client"
+          strategy="afterInteractive"
+        />
       </body>
     </html>
   );
 }
-
-
-
-
 
 
 

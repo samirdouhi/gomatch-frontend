@@ -15,15 +15,11 @@ import {
   CircleAlert,
   Heart,
   Info,
-  KeyRound,
-  LayoutGrid,
   Lock,
   Mail,
   Save,
-  Shield,
   Star,
   Trophy,
-  Upload,
   User,
   X,
 } from "lucide-react";
@@ -98,8 +94,8 @@ const PREFERENCE_LEGACY_ALIASES: Record<string, string> = {
   "restaurants locaux": "StreetFood",
   "evenements sportifs": "Events",
   "événements sportifs": "Events",
-  "musees": "Culture",
-  "musées": "Culture",
+  musees: "Culture",
+  musées: "Culture",
   patrimoine: "Architecture",
   souvenirs: "Shopping",
   balades: "Nature",
@@ -129,6 +125,37 @@ function pickArray(obj: AnyObj, keys: string[]): string[] {
     }
   }
   return [];
+}
+
+function parseJsonArray(value: string): string[] {
+  if (!value.trim()) return [];
+
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) {
+      return parsed.filter(
+        (item): item is string => typeof item === "string" && item.trim().length > 0
+      );
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+function normalizePhotoApiUrl(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return "";
+
+  if (
+    trimmed === "/profile/me/photo" ||
+    trimmed === "/me/photo" ||
+    trimmed === "/api/touriste/profile/me/photo"
+  ) {
+    return `${PROFILE_API}/me/photo`;
+  }
+
+  return trimmed;
 }
 
 function normalizeDateForInput(value: string): string {
@@ -377,7 +404,7 @@ export default function EditProfilePage() {
     };
   }, []);
 
-  const replaceBlobUrl = (nextUrl: string) => {
+  const replaceBlobUrl = useCallback((nextUrl: string) => {
     if (
       activeBlobUrlRef.current &&
       activeBlobUrlRef.current.startsWith("blob:") &&
@@ -386,23 +413,26 @@ export default function EditProfilePage() {
       URL.revokeObjectURL(activeBlobUrlRef.current);
     }
     activeBlobUrlRef.current = nextUrl.startsWith("blob:") ? nextUrl : null;
-  };
-
-  const loadProtectedPhoto = useCallback(async (url: string): Promise<string> => {
-    const res = await authFetch(url, {
-      method: "GET",
-      cache: "no-store",
-    });
-
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`);
-    }
-
-    const blob = await res.blob();
-    const blobUrl = URL.createObjectURL(blob);
-    replaceBlobUrl(blobUrl);
-    return blobUrl;
   }, []);
+
+  const loadProtectedPhoto = useCallback(
+    async (url: string): Promise<string> => {
+      const res = await authFetch(url, {
+        method: "GET",
+        cache: "no-store",
+      });
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      replaceBlobUrl(blobUrl);
+      return blobUrl;
+    },
+    [replaceBlobUrl]
+  );
 
   const loadAuthDetails = useCallback(async () => {
     try {
@@ -453,14 +483,21 @@ export default function EditProfilePage() {
 
       const data = (await res.json()) as AnyObj;
 
-      const photoUrlFromApi = pickString(data, [
-        "photoUrl",
-        "PhotoUrl",
-        "avatarUrl",
-        "AvatarUrl",
-        "photo",
-        "Photo",
-      ]);
+      const userProfile =
+        data.userProfile && typeof data.userProfile === "object"
+          ? (data.userProfile as AnyObj)
+          : {};
+
+      const photoUrlFromApi = normalizePhotoApiUrl(
+        pickString(userProfile, [
+          "photoUrl",
+          "PhotoUrl",
+          "avatarUrl",
+          "AvatarUrl",
+          "photo",
+          "Photo",
+        ])
+      );
 
       let resolvedPhotoUrl = "";
 
@@ -477,25 +514,23 @@ export default function EditProfilePage() {
       }
 
       setForm({
-        prenom: pickString(data, ["prenom", "Prenom", "firstName", "FirstName"]),
-        nom: pickString(data, ["nom", "Nom", "lastName", "LastName"]),
+        prenom: pickString(userProfile, ["prenom", "Prenom", "firstName", "FirstName"]),
+        nom: pickString(userProfile, ["nom", "Nom", "lastName", "LastName"]),
         dateNaissance: normalizeDateForInput(
-          pickString(data, ["dateNaissance", "DateNaissance", "birthDate", "BirthDate"])
+          pickString(userProfile, [
+            "dateNaissance",
+            "DateNaissance",
+            "birthDate",
+            "BirthDate",
+          ])
         ),
-        genre: mapGenreFromApi(pickString(data, ["genre", "Genre"])),
-        langue: mapLangueFromApi(pickString(data, ["langue", "Langue"])),
+        genre: mapGenreFromApi(pickString(userProfile, ["genre", "Genre"])),
+        langue: mapLangueFromApi(pickString(userProfile, ["langue", "Langue"])),
         preferences: normalizePreferenceValues(
-          pickArray(data, ["preferences", "Preferences", "interests", "Interests"])
+          parseJsonArray(pickString(data, ["preferencesJson", "PreferencesJson"]))
         ),
         equipesSuivies: normalizeTeamValues(
-          pickArray(data, [
-            "equipesSuivies",
-            "EquipesSuivies",
-            "followedTeams",
-            "FollowedTeams",
-            "teams",
-            "Teams",
-          ])
+          parseJsonArray(pickString(data, ["equipesSuiviesJson", "EquipesSuiviesJson"]))
         ),
         photoUrl: resolvedPhotoUrl,
       });
@@ -504,7 +539,7 @@ export default function EditProfilePage() {
     } finally {
       setLoading(false);
     }
-  }, [loadProtectedPhoto, router]);
+  }, [loadProtectedPhoto, replaceBlobUrl, router]);
 
   useEffect(() => {
     void loadProfile();
@@ -530,7 +565,7 @@ export default function EditProfilePage() {
   );
 
   const tabs = [
-    { key: "overview" as const, label: "Général", icon: <LayoutGrid className="h-4 w-4" /> },
+    { key: "overview" as const, label: "Général", icon: <User className="h-4 w-4" /> },
     { key: "infos" as const, label: "Infos", icon: <Info className="h-4 w-4" /> },
     { key: "preferences" as const, label: "Passions", icon: <Star className="h-4 w-4" /> },
     { key: "photo" as const, label: "Photo", icon: <Camera className="h-4 w-4" /> },
@@ -755,12 +790,14 @@ export default function EditProfilePage() {
       const profilePayload = {
         prenom: form.prenom.trim(),
         nom: form.nom.trim(),
-        dateNaissance: form.dateNaissance,
+        dateNaissance: form.dateNaissance.includes("T")
+          ? form.dateNaissance
+          : `${form.dateNaissance}T00:00:00`,
         genre: mapGenreToApi(form.genre),
         langue: form.langue,
       };
 
-      const profileRes = await authFetch(`${PROFILE_API}/me`, {
+      const profileRes = await authFetch(`${PROFILE_API}/me/user`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(profilePayload),
@@ -781,9 +818,8 @@ export default function EditProfilePage() {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          preferences: normalizePreferenceValues(form.preferences),
-          equipesSuivies: normalizeTeamValues(form.equipesSuivies),
-          langue: form.langue,
+          preferencesJson: JSON.stringify(normalizePreferenceValues(form.preferences)),
+          equipesSuiviesJson: JSON.stringify(normalizeTeamValues(form.equipesSuivies)),
         }),
       });
 
@@ -1063,9 +1099,7 @@ export default function EditProfilePage() {
                         <h3 className="text-lg font-black uppercase tracking-wide text-white">
                           Paramètres du compte
                         </h3>
-                        <p className="text-xs text-gray-500">
-                          Email géré par AuthService
-                        </p>
+                        <p className="text-xs text-gray-500">Email géré par AuthService</p>
                       </div>
                     </div>
 
